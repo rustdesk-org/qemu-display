@@ -1,0 +1,6 @@
+[workspace]
+members = ["qemu-display-listener", "qemu-gtk4"]
+
+#[patch.crates-io]
+#zbus = { path = '/home/elmarco/src/zbus/zbus' }
+

@@ -1,0 +1,19 @@
+[package]
+name = "qemu-gtk4"
+version = "0.1.0"
+authors = ["QEMU developpers <qemu-devel@nongnu.org>"]
+edition = "2018"
+
+[dependencies]
+qemu-display-listener = { path = "../qemu-display-listener", features = ["glib"] }
+zbus = { version = "2.0.0-beta" }
+log = "0.4"
+pretty_env_logger = "0.4"
+gettext-rs = { version = "0.5", features = ["gettext-system"] }
+gtk-macros = "0.2"
+once_cell = "1.5"
+
+[dependencies.gtk]
+package = "gtk4"
+git = "https://github.com/gtk-rs/gtk4-rs"
+rev = "abea0c9980bc083494eceb30dfab5eeb99a73118"
