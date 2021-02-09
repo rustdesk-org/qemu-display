@@ -23,6 +23,7 @@ sources = files(
   'config.rs',
   'console.rs',
   'console_area.rs',
+  'egl.rs',
   'main.rs',
   'window.rs',
 )

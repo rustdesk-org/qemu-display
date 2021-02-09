@@ -9,6 +9,12 @@ pub use vm::*;
 mod console;
 pub use console::*;
 
+mod keyboard;
+pub use keyboard::*;
+
+mod mouse;
+pub use mouse::*;
+
 mod listener;
 pub use listener::*;
 

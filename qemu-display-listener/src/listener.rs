@@ -1,26 +1,28 @@
 use std::cell::RefCell;
+use std::ops::Drop;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::Rc;
 use std::sync::mpsc::{SendError, Sender};
-use std::ops::Drop;
 
 use zbus::{dbus_interface, export::zvariant::Fd};
 
 #[derive(Debug)]
 pub struct Scanout {
-        fd: RawFd,
-        width: u32,
-        height: u32,
-        stride: u32,
-        fourcc: u32,
-        modifier: u64,
-        y0_top: bool,
+    pub fd: RawFd,
+    pub width: u32,
+    pub height: u32,
+    pub stride: u32,
+    pub fourcc: u32,
+    pub modifier: u64,
+    pub y0_top: bool,
 }
 
 impl Drop for Scanout {
     fn drop(&mut self) {
         if self.fd >= 0 {
-            unsafe { libc::close(self.fd); }
+            unsafe {
+                libc::close(self.fd);
+            }
         }
     }
 }
@@ -51,6 +53,7 @@ pub enum Event {
         data: Vec<u8>,
     },
     Scanout(Scanout),
+    Disconnected,
 }
 
 pub(crate) trait EventSender {
@@ -132,5 +135,11 @@ impl<E: EventSender> Listener<E> {
         if let Err(e) = self.tx.send_event(event) {
             *self.err.borrow_mut() = Some(e);
         }
+    }
+}
+
+impl<E: EventSender> Drop for Listener<E> {
+    fn drop(&mut self) {
+        self.send(Event::Disconnected)
     }
 }

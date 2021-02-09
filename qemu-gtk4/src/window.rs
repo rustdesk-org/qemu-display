@@ -1,6 +1,6 @@
 use crate::application::QemuApplication;
-use crate::console::QemuConsole;
 use crate::config::{APP_ID, PROFILE};
+use crate::console::QemuConsole;
 use glib::signal::Inhibit;
 use gtk::subclass::prelude::*;
 use gtk::{self, prelude::*};

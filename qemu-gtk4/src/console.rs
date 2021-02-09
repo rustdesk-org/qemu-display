@@ -1,11 +1,11 @@
-use glib::subclass::prelude::*;
 use glib::clone;
+use glib::subclass::prelude::*;
 use gtk::prelude::*;
 use gtk::subclass::widget::WidgetImplExt;
 use gtk::{glib, CompositeTemplate};
 use once_cell::sync::OnceCell;
 
-use qemu_display_listener::{Console, Event};
+use qemu_display_listener::{Console, Event, MouseButton};
 
 mod imp {
     use super::*;
@@ -48,6 +48,45 @@ mod imp {
     impl ObjectImpl for QemuConsole {
         fn constructed(&self, obj: &Self::Type) {
             self.parent_constructed(obj);
+
+            let ec = gtk::EventControllerKey::new();
+            ec.set_propagation_phase(gtk::PropagationPhase::Capture);
+            self.area.add_controller(&ec);
+            ec.connect_key_pressed(clone!(@weak obj => move |_, _keyval, keycode, _state| {
+                let c = obj.qemu_console();
+                let _ = c.keyboard.press(keycode);
+                glib::signal::Inhibit(true)
+            }));
+            ec.connect_key_released(clone!(@weak obj => move |_, _keyval, keycode, _state| {
+                let c = obj.qemu_console();
+                let _ = c.keyboard.release(keycode);
+            }));
+
+            let ec = gtk::EventControllerMotion::new();
+            self.area.add_controller(&ec);
+            ec.connect_motion(clone!(@weak obj => move |_, x, y| {
+                obj.motion(x, y);
+            }));
+
+            let ec = gtk::GestureClick::new();
+            ec.set_button(0);
+            self.area.add_controller(&ec);
+            ec.connect_pressed(clone!(@weak obj => move |gesture, _n_press, x, y| {
+                let c = obj.qemu_console();
+                let button = from_gdk_button(gesture.get_current_button());
+                obj.motion(x, y);
+                let _ = c.mouse.press(button);
+            }));
+            ec.connect_released(clone!(@weak obj => move |gesture, _n_press, x, y| {
+                let c = obj.qemu_console();
+                let button = from_gdk_button(gesture.get_current_button());
+                obj.motion(x, y);
+                let _ = c.mouse.release(button);
+            }));
+
+            self.area.set_sensitive(true);
+            self.area.set_focusable(true);
+            self.area.set_focus_on_click(true);
         }
 
         // Needed for direct subclasses of GtkWidget;
@@ -86,11 +125,46 @@ impl QemuConsole {
                         con.label.set_label(&format!("{:?}", s));
                         con.area.set_scanout(s);
                     }
+                    Event::Disconnected => {
+                        con.label.set_label("Console disconnected!");
+                    }
                     _ => ()
                 }
                 Continue(true)
             }),
         );
         priv_.console.set(console).unwrap();
+    }
+
+    fn qemu_console(&self) -> &Console {
+        let priv_ = imp::QemuConsole::from_instance(self);
+        priv_.console.get().expect("Console is not yet set!")
+    }
+
+    fn motion(&self, x: f64, y: f64) {
+        let priv_ = imp::QemuConsole::from_instance(self);
+
+        // FIXME: scaling, centering etc..
+        let widget_w = self.get_width();
+        let widget_h = self.get_height();
+        let _widget_scale = self.get_scale_factor();
+
+        let c = self.qemu_console();
+        // FIXME: ideally, we would use ConsoleProxy cached properties instead
+        let x = (x / widget_w as f64) * priv_.area.scanout_size().0 as f64;
+        let y = (y / widget_h as f64) * priv_.area.scanout_size().1 as f64;
+        let _ = c.mouse.set_abs_position(x as u32, y as u32);
+
+        // FIXME: focus on click doesn't work
+        priv_.area.grab_focus();
+    }
+}
+
+fn from_gdk_button(button: u32) -> MouseButton {
+    match button {
+        1 => MouseButton::Left,
+        2 => MouseButton::Middle,
+        3 => MouseButton::Right,
+        _ => MouseButton::Extra,
     }
 }

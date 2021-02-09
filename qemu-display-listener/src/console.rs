@@ -7,7 +7,7 @@ use std::{os::unix::io::AsRawFd, thread};
 use zbus::{dbus_proxy, export::zvariant::Fd};
 
 use crate::Result;
-use crate::{Event, Listener};
+use crate::{Event, KeyboardProxy, Listener, MouseProxy};
 
 #[dbus_proxy(default_service = "org.qemu", interface = "org.qemu.Display1.Console")]
 pub trait Console {
@@ -34,16 +34,24 @@ pub trait Console {
 #[derivative(Debug)]
 pub struct Console {
     #[derivative(Debug = "ignore")]
-    proxy: ConsoleProxy<'static>,
+    pub proxy: ConsoleProxy<'static>,
+    #[derivative(Debug = "ignore")]
+    pub keyboard: KeyboardProxy<'static>,
+    #[derivative(Debug = "ignore")]
+    pub mouse: MouseProxy<'static>,
 }
 
 impl Console {
     pub fn new(conn: &zbus::Connection, idx: u32) -> Result<Self> {
-        let proxy = ConsoleProxy::new_for_owned_path(
-            conn.clone(),
-            format!("/org/qemu/Display1/Console_{}", idx),
-        )?;
-        Ok(Self { proxy })
+        let obj_path = format!("/org/qemu/Display1/Console_{}", idx);
+        let proxy = ConsoleProxy::new_for_owned_path(conn.clone(), obj_path.clone())?;
+        let keyboard = KeyboardProxy::new_for_owned_path(conn.clone(), obj_path.clone())?;
+        let mouse = MouseProxy::new_for_owned_path(conn.clone(), obj_path)?;
+        Ok(Self {
+            proxy,
+            keyboard,
+            mouse,
+        })
     }
 
     pub fn label(&self) -> Result<String> {
@@ -68,7 +76,7 @@ impl Console {
             let mut s = zbus::ObjectServer::new(&c);
             let err = Rc::new(RefCell::new(None));
             s.at(
-                &zvariant::ObjectPath::from_str_unchecked("/org/qemu/Display1/Listener"),
+                "/org/qemu/Display1/Listener",
                 Listener::new(tx, err.clone()),
             )
             .unwrap();
@@ -100,18 +108,18 @@ impl Console {
             let mut s = zbus::ObjectServer::new(&c);
             let err = Rc::new(RefCell::new(None));
             s.at(
-                &zvariant::ObjectPath::from_str_unchecked("/org/qemu/Display1/Listener"),
+                "/org/qemu/Display1/Listener",
                 Listener::new(tx, err.clone()),
             )
             .unwrap();
             loop {
                 if let Err(e) = s.try_handle_next() {
                     eprintln!("Listener DBus error: {}", e);
-                    return;
+                    break;
                 }
                 if let Some(e) = &*err.borrow() {
                     eprintln!("Listener channel error: {}", e);
-                    return;
+                    break;
                 }
             }
         });
