@@ -2,8 +2,28 @@ use std::cell::RefCell;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::Rc;
 use std::sync::mpsc::{SendError, Sender};
+use std::ops::Drop;
 
 use zbus::{dbus_interface, export::zvariant::Fd};
+
+#[derive(Debug)]
+pub struct Scanout {
+        fd: RawFd,
+        width: u32,
+        height: u32,
+        stride: u32,
+        fourcc: u32,
+        modifier: u64,
+        y0_top: bool,
+}
+
+impl Drop for Scanout {
+    fn drop(&mut self) {
+        if self.fd >= 0 {
+            unsafe { libc::close(self.fd); }
+        }
+    }
+}
 
 // TODO: replace events mpsc with async traits
 #[derive(Debug)]
@@ -18,15 +38,6 @@ pub enum Event {
         w: i32,
         h: i32,
     },
-    Scanout {
-        fd: RawFd,
-        width: u32,
-        height: u32,
-        stride: u32,
-        fourcc: u32,
-        modifier: u64,
-        y0_top: bool,
-    },
     MouseSet {
         x: i32,
         y: i32,
@@ -39,6 +50,7 @@ pub enum Event {
         hot_y: i32,
         data: Vec<u8>,
     },
+    Scanout(Scanout),
 }
 
 pub(crate) trait EventSender {
@@ -85,7 +97,7 @@ impl<E: 'static + EventSender> Listener<E> {
         y0_top: bool,
     ) {
         let fd = unsafe { libc::dup(fd.as_raw_fd()) };
-        self.send(Event::Scanout {
+        self.send(Event::Scanout(Scanout {
             fd,
             width,
             height,
@@ -93,7 +105,7 @@ impl<E: 'static + EventSender> Listener<E> {
             fourcc,
             modifier,
             y0_top,
-        })
+        }))
     }
 
     fn mouse_set(&mut self, x: i32, y: i32, on: i32) {

@@ -1,18 +1,25 @@
 use glib::subclass::prelude::*;
+use glib::clone;
 use gtk::prelude::*;
 use gtk::subclass::widget::WidgetImplExt;
-use gtk::{gio, glib, CompositeTemplate};
+use gtk::{glib, CompositeTemplate};
+use once_cell::sync::OnceCell;
+
+use qemu_display_listener::{Console, Event};
 
 mod imp {
     use super::*;
     use glib::subclass;
     use gtk::subclass::prelude::*;
 
-    #[derive(Debug, CompositeTemplate)]
+    #[derive(Debug, CompositeTemplate, Default)]
     #[template(resource = "/org/qemu/gtk4/console.ui")]
     pub struct QemuConsole {
         #[template_child]
+        pub area: TemplateChild<crate::console_area::QemuConsoleArea>,
+        #[template_child]
         pub label: TemplateChild<gtk::Label>,
+        pub console: OnceCell<Console>,
     }
 
     impl ObjectSubclass for QemuConsole {
@@ -26,9 +33,7 @@ mod imp {
         glib::object_subclass!();
 
         fn new() -> Self {
-            Self {
-                label: TemplateChild::default(),
-            }
+            Self::default()
         }
 
         fn class_init(klass: &mut Self::Class) {
@@ -64,4 +69,28 @@ mod imp {
 
 glib::wrapper! {
     pub struct QemuConsole(ObjectSubclass<imp::QemuConsole>) @extends gtk::Widget;
+}
+
+impl QemuConsole {
+    pub fn set_qemu_console(&self, console: Console) {
+        let priv_ = imp::QemuConsole::from_instance(self);
+        let rx = console
+            .glib_listen()
+            .expect("Failed to listen to the console");
+        rx.attach(
+            None,
+            clone!(@weak self as con => move |t| {
+                let con = imp::QemuConsole::from_instance(&con);
+                match t {
+                    Event::Scanout(s) => {
+                        con.label.set_label(&format!("{:?}", s));
+                        con.area.set_scanout(s);
+                    }
+                    _ => ()
+                }
+                Continue(true)
+            }),
+        );
+        priv_.console.set(console).unwrap();
+    }
 }

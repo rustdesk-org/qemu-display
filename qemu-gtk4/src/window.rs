@@ -1,14 +1,13 @@
 use crate::application::QemuApplication;
 use crate::console::QemuConsole;
 use crate::config::{APP_ID, PROFILE};
-use glib::clone;
 use glib::signal::Inhibit;
 use gtk::subclass::prelude::*;
 use gtk::{self, prelude::*};
 use gtk::{gio, glib, CompositeTemplate};
 use log::warn;
 
-use qemu_display_listener::{Console as ConsoleListener, Event};
+use qemu_display_listener::Console;
 
 mod imp {
     use super::*;
@@ -21,10 +20,6 @@ mod imp {
         pub headerbar: TemplateChild<gtk::HeaderBar>,
         #[template_child]
         pub console: TemplateChild<QemuConsole>,
-        // #[template_child]
-        // pub glarea: TemplateChild<gtk::GLArea>,
-        // #[template_child]
-        // pub label: TemplateChild<gtk::Label>,
         pub settings: gio::Settings,
     }
 
@@ -42,8 +37,6 @@ mod imp {
             Self {
                 headerbar: TemplateChild::default(),
                 console: TemplateChild::default(),
-                // label: TemplateChild::default(),
-                // glarea: TemplateChild::default(),
                 settings: gio::Settings::new(APP_ID),
             }
         }
@@ -96,36 +89,14 @@ glib::wrapper! {
 }
 
 impl QemuApplicationWindow {
-    pub fn new(app: &QemuApplication, console: ConsoleListener) -> Self {
+    pub fn new(app: &QemuApplication, console: Console) -> Self {
         let window: Self = glib::Object::new(&[]).expect("Failed to create QemuApplicationWindow");
         window.set_application(Some(app));
 
         let win = &imp::QemuApplicationWindow::from_instance(&window);
-        // win.glarea.connect_render(clone!(@weak window as win => move |area, ctxt| {
-        //     dbg!("render");
-        //     Inhibit(false)
-        // }));
-
+        win.console.set_qemu_console(console);
         // Set icons for shell
         gtk::Window::set_default_icon_name(APP_ID);
-
-        let rx = console
-            .glib_listen()
-            .expect("Failed to listen to the console");
-        rx.attach(
-            None,
-            clone!(@weak window as win => move |t| {
-                let win = &imp::QemuApplicationWindow::from_instance(&win);
-                match t {
-                    Event::Scanout { .. } => {
-                        // win.label.set_text(&format!("{:?}", t));
-                        // win.glarea.queue_render();
-                    }
-                    _ => ()
-                }
-                Continue(true)
-            }),
-        );
 
         window
     }

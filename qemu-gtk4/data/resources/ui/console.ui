@@ -7,7 +7,7 @@
     <child>
       <object class="GtkNotebook">
         <child>
-          <object class="GtkGLArea" id="glarea"/>
+          <object class="QemuConsoleArea" id="area"/>
         </child>
         <child type="tab">
           <object class="GtkLabel" id="notebook-tab">

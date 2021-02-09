@@ -32,12 +32,12 @@ pub trait Console {
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
-pub struct Console<'c> {
+pub struct Console {
     #[derivative(Debug = "ignore")]
-    proxy: ConsoleProxy<'c>,
+    proxy: ConsoleProxy<'static>,
 }
 
-impl<'c> Console<'c> {
+impl Console {
     pub fn new(conn: &zbus::Connection, idx: u32) -> Result<Self> {
         let proxy = ConsoleProxy::new_for_owned_path(
             conn.clone(),
@@ -89,7 +89,7 @@ impl<'c> Console<'c> {
 }
 
 #[cfg(feature = "glib")]
-impl<'c> Console<'c> {
+impl Console {
     pub fn glib_listen(&self) -> Result<glib::Receiver<Event>> {
         let (p0, p1) = UnixStream::pair()?;
         let (tx, rx) = glib::MainContext::channel(glib::source::Priority::default());

@@ -21,6 +21,8 @@ run_command(
 sources = files(
   'application.rs',
   'config.rs',
+  'console.rs',
+  'console_area.rs',
   'main.rs',
   'window.rs',
 )

@@ -5,6 +5,7 @@ mod application;
 mod config;
 mod window;
 mod console;
+mod console_area;
 
 use application::QemuApplication;
 use config::{GETTEXT_PACKAGE, LOCALEDIR, RESOURCES_FILE};
