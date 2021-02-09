@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <interface>
   <menu id="primary_menu">
     <section>
@@ -29,11 +30,7 @@
       </object>
     </child>
     <child>
-      <object class="GtkLabel" id="label">
-        <property name="label" translatable="yes">Hello world!</property>
-        <style>
-          <class name="title-header"/>
-        </style>
+      <object class="QemuConsole" id="console">
       </object>
     </child>
   </template>

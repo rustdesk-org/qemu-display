@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <template class="QemuConsole" parent="GtkWidget">
+    <property name="layout-manager">
+      <object class="GtkBinLayout"/>
+    </property>
+    <child>
+      <object class="GtkNotebook">
+        <child>
+          <object class="GtkGLArea" id="glarea"/>
+        </child>
+        <child type="tab">
+          <object class="GtkLabel" id="notebook-tab">
+            <property name="label">Console</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="label">
+            <property name="label" translatable="yes">Hello world2!</property>
+          </object>
+        </child>
+        <child type="tab">
+          <object class="GtkLabel" id="notebook-tab2">
+            <property name="label">Tab2</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

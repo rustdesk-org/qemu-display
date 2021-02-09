@@ -4,6 +4,7 @@ mod application;
 #[rustfmt::skip]
 mod config;
 mod window;
+mod console;
 
 use application::QemuApplication;
 use config::{GETTEXT_PACKAGE, LOCALEDIR, RESOURCES_FILE};
