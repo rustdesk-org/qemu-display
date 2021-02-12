@@ -55,7 +55,9 @@ fn codegen() -> Result<(), DynError> {
     ];
     for km in &keymaps {
         let varname = format!("keymap_{}2qnum", km);
-        let out = cmd!("{keymap_gen} code-map --lang rust --varname {varname} {keymaps_csv} {km} qnum").read()?;
+        let out =
+            cmd!("{keymap_gen} code-map --lang rust --varname {varname} {keymaps_csv} {km} qnum")
+                .read()?;
         write_file(keycodemap_src.join(format!("{}.rs", varname)), out)?;
     }
     Ok(())

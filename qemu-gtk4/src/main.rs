@@ -5,6 +5,7 @@ mod config;
 mod console;
 mod console_area;
 mod egl;
+mod error;
 mod window;
 
 use application::QemuApplication;

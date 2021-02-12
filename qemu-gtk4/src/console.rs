@@ -5,6 +5,7 @@ use gtk::subclass::widget::WidgetImplExt;
 use gtk::{glib, CompositeTemplate};
 use once_cell::sync::OnceCell;
 
+use keycodemap::*;
 use qemu_display_listener::{Console, Event, MouseButton};
 
 mod imp {
@@ -54,12 +55,16 @@ mod imp {
             self.area.add_controller(&ec);
             ec.connect_key_pressed(clone!(@weak obj => move |_, _keyval, keycode, _state| {
                 let c = obj.qemu_console();
-                let _ = c.keyboard.press(keycode);
+                if let Some(qnum) = KEYMAP_XORGEVDEV2QNUM.get(keycode as usize) {
+                    let _ = c.keyboard.press(*qnum as u32);
+                }
                 glib::signal::Inhibit(true)
             }));
             ec.connect_key_released(clone!(@weak obj => move |_, _keyval, keycode, _state| {
                 let c = obj.qemu_console();
-                let _ = c.keyboard.release(keycode);
+                if let Some(qnum) = KEYMAP_XORGEVDEV2QNUM.get(keycode as usize) {
+                    let _ = c.keyboard.release(*qnum as u32);
+                }
             }));
 
             let ec = gtk::EventControllerMotion::new();
@@ -121,6 +126,9 @@ impl QemuConsole {
             clone!(@weak self as con => move |t| {
                 let con = imp::QemuConsole::from_instance(&con);
                 match t {
+                    Event::Update { .. } => {
+                        con.area.queue_render();
+                    }
                     Event::Scanout(s) => {
                         con.label.set_label(&format!("{:?}", s));
                         con.area.set_scanout(s);
@@ -144,16 +152,10 @@ impl QemuConsole {
     fn motion(&self, x: f64, y: f64) {
         let priv_ = imp::QemuConsole::from_instance(self);
 
-        // FIXME: scaling, centering etc..
-        let widget_w = self.get_width();
-        let widget_h = self.get_height();
-        let _widget_scale = self.get_scale_factor();
-
-        let c = self.qemu_console();
-        // FIXME: ideally, we would use ConsoleProxy cached properties instead
-        let x = (x / widget_w as f64) * priv_.area.scanout_size().0 as f64;
-        let y = (y / widget_h as f64) * priv_.area.scanout_size().1 as f64;
-        let _ = c.mouse.set_abs_position(x as u32, y as u32);
+        if let Some((x, y)) = priv_.area.transform_input(x, y) {
+            let c = self.qemu_console();
+            let _ = c.mouse.set_abs_position(x, y);
+        }
 
         // FIXME: focus on click doesn't work
         priv_.area.grab_focus();
