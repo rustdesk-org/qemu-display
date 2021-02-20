@@ -75,7 +75,7 @@ mod imp {
             widget.make_current();
 
             if let Err(e) = unsafe { self.realize_gl() } {
-                let e = glib::Error::new(AppError::GL, &format!("{}", e));
+                let e = glib::Error::new(AppError::GL, &e.to_string());
                 widget.set_error(Some(&e));
             }
         }
@@ -92,7 +92,8 @@ mod imp {
                 gl::Viewport(vp.x, vp.y, vp.width, vp.height);
                 self.texture_blit(false);
             }
-            return true; /* FIXME: Inibit */
+            // parent will return to update call
+            false
         }
     }
 
@@ -308,11 +309,11 @@ impl QemuConsoleArea {
     }
 }
 
-unsafe fn compile_shader(type_: GLenum, src: &CStr) -> Result<GLuint, String> {
+unsafe fn compile_shader(type_: GLenum, src: &CStr) -> GLuint {
     let shader = gl::CreateShader(type_);
     gl::ShaderSource(shader, 1, &src.as_ptr(), std::ptr::null());
     gl::CompileShader(shader);
-    Ok(shader)
+    shader
 }
 
 fn cstring_new_len(len: usize) -> CString {
@@ -321,8 +322,8 @@ fn cstring_new_len(len: usize) -> CString {
 }
 
 unsafe fn compile_prog(vs: &CStr, fs: &CStr) -> Result<GLuint, String> {
-    let vs = compile_shader(gl::VERTEX_SHADER, vs)?;
-    let fs = compile_shader(gl::FRAGMENT_SHADER, fs)?;
+    let vs = compile_shader(gl::VERTEX_SHADER, vs);
+    let fs = compile_shader(gl::FRAGMENT_SHADER, fs);
     let prog = gl::CreateProgram();
 
     gl::AttachShader(prog, vs);

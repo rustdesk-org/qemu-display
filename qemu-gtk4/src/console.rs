@@ -4,6 +4,7 @@ use gtk::prelude::*;
 use gtk::subclass::widget::WidgetImplExt;
 use gtk::{glib, CompositeTemplate};
 use once_cell::sync::OnceCell;
+use std::cell::Cell;
 
 use keycodemap::*;
 use qemu_display_listener::{Console, Event, MouseButton};
@@ -21,6 +22,7 @@ mod imp {
         #[template_child]
         pub label: TemplateChild<gtk::Label>,
         pub console: OnceCell<Console>,
+        pub wait_rendering: Cell<usize>,
     }
 
     impl ObjectSubclass for QemuConsole {
@@ -137,23 +139,37 @@ glib::wrapper! {
 impl QemuConsole {
     pub fn set_qemu_console(&self, console: Console) {
         let priv_ = imp::QemuConsole::from_instance(self);
-        let rx = console
+        let (rx, wait_tx) = console
             .glib_listen()
             .expect("Failed to listen to the console");
+        priv_
+            .area
+            .connect_render(clone!(@weak self as obj => move |_, _| {
+                let priv_ = imp::QemuConsole::from_instance(&obj);
+                let wait_rendering = priv_.wait_rendering.get();
+                if wait_rendering > 0 {
+                    if let Err(e) = wait_tx.send(()) {
+                        eprintln!("Failed to ack rendering: {}", e);
+                    }
+                    priv_.wait_rendering.set(wait_rendering - 1);
+                }
+                glib::signal::Inhibit(false)
+            }));
         rx.attach(
             None,
             clone!(@weak self as con => move |t| {
-                let con = imp::QemuConsole::from_instance(&con);
+                let priv_ = imp::QemuConsole::from_instance(&con);
                 match t {
                     Event::Update { .. } => {
-                        con.area.queue_render();
+                        priv_.wait_rendering.set(priv_.wait_rendering.get() + 1);
+                        priv_.area.queue_render();
                     }
                     Event::Scanout(s) => {
-                        con.label.set_label(&format!("{:?}", s));
-                        con.area.set_scanout(s);
+                        priv_.label.set_label(&format!("{:?}", s));
+                        priv_.area.set_scanout(s);
                     }
                     Event::Disconnected => {
-                        con.label.set_label("Console disconnected!");
+                        priv_.label.set_label("Console disconnected!");
                     }
                     _ => ()
                 }

@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::ops::Drop;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::rc::Rc;
-use std::sync::mpsc::{SendError, Sender};
+use std::sync::Arc;
+use std::sync::mpsc::{RecvError, SendError, Sender, Receiver};
 
 use zbus::{dbus_interface, export::zvariant::Fd};
 
@@ -76,7 +76,8 @@ impl EventSender for glib::Sender<Event> {
 #[derive(Debug)]
 pub(crate) struct Listener<E: EventSender> {
     tx: E,
-    err: Rc<RefCell<Option<SendError<Event>>>>,
+    wait_rx: Receiver<()>,
+    err: Arc<RefCell<Option<SendError<Event>>>>,
 }
 
 #[dbus_interface(name = "org.qemu.Display1.Listener")]
@@ -86,7 +87,10 @@ impl<E: 'static + EventSender> Listener<E> {
     }
 
     fn update(&mut self, x: i32, y: i32, w: i32, h: i32) {
-        self.send(Event::Update { x, y, w, h })
+        self.send(Event::Update { x, y, w, h });
+        if let Err(e) = self.wait() {
+            eprintln!("update returned error: {}", e)
+        }
     }
 
     fn scanout(
@@ -127,14 +131,23 @@ impl<E: 'static + EventSender> Listener<E> {
 }
 
 impl<E: EventSender> Listener<E> {
-    pub(crate) fn new(tx: E, err: Rc<RefCell<Option<SendError<Event>>>>) -> Self {
-        Listener { tx, err }
+    pub(crate) fn new(tx: E, wait_rx: Receiver<()>) -> Self {
+        let err = Arc::new(RefCell::new(None));
+        Listener { tx, wait_rx, err }
     }
 
     fn send(&mut self, event: Event) {
         if let Err(e) = self.tx.send_event(event) {
             *self.err.borrow_mut() = Some(e);
         }
+    }
+
+    fn wait(&mut self) -> Result<(), RecvError> {
+        self.wait_rx.recv()
+    }
+
+    pub fn err(&self) -> Arc<RefCell<Option<SendError<Event>>>> {
+        self.err.clone()
     }
 }
 

@@ -1,7 +1,5 @@
-use std::cell::RefCell;
 use std::os::unix::net::UnixStream;
-use std::rc::Rc;
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::{os::unix::io::AsRawFd, thread};
 
 use zbus::{dbus_proxy, export::zvariant::Fd};
@@ -66,18 +64,20 @@ impl Console {
         Ok(self.proxy.height()?)
     }
 
-    pub fn listen(&self) -> Result<Receiver<Event>> {
+    pub fn listen(&self) -> Result<(Receiver<Event>, Sender<()>)> {
         let (p0, p1) = UnixStream::pair()?;
         let (tx, rx) = mpsc::channel();
         self.proxy.register_listener(p0.as_raw_fd().into())?;
 
+        let (wait_tx, wait_rx) = mpsc::channel();
         let _thread = thread::spawn(move || {
             let c = zbus::Connection::new_unix_client(p1, false).unwrap();
             let mut s = zbus::ObjectServer::new(&c);
-            let err = Rc::new(RefCell::new(None));
+            let listener = Listener::new(tx, wait_rx);
+            let err = listener.err();
             s.at(
                 "/org/qemu/Display1/Listener",
-                Listener::new(tx, err.clone()),
+                listener
             )
             .unwrap();
             loop {
@@ -92,24 +92,26 @@ impl Console {
             }
         });
 
-        Ok(rx)
+        Ok((rx, wait_tx))
     }
 }
 
 #[cfg(feature = "glib")]
 impl Console {
-    pub fn glib_listen(&self) -> Result<glib::Receiver<Event>> {
+    pub fn glib_listen(&self) -> Result<(glib::Receiver<Event>, Sender<()>)> {
         let (p0, p1) = UnixStream::pair()?;
         let (tx, rx) = glib::MainContext::channel(glib::source::Priority::default());
         self.proxy.register_listener(p0.as_raw_fd().into())?;
 
+        let (wait_tx, wait_rx) = mpsc::channel();
         let _thread = thread::spawn(move || {
             let c = zbus::Connection::new_unix_client(p1, false).unwrap();
             let mut s = zbus::ObjectServer::new(&c);
-            let err = Rc::new(RefCell::new(None));
+            let listener = Listener::new(tx, wait_rx);
+            let err = listener.err();
             s.at(
                 "/org/qemu/Display1/Listener",
-                Listener::new(tx, err.clone()),
+                listener
             )
             .unwrap();
             loop {
@@ -124,6 +126,6 @@ impl Console {
             }
         });
 
-        Ok(rx)
+        Ok((rx, wait_tx))
     }
 }
