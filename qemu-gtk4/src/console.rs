@@ -89,6 +89,25 @@ mod imp {
                 let _ = c.mouse.release(button);
             }));
 
+            let ec = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
+            self.area.add_controller(&ec);
+            ec.connect_scroll(clone!(@weak obj => move |_, _dx, dy| {
+                let c = obj.qemu_console();
+
+                let button = if dy >= 1.0 {
+                    Some(MouseButton::WheelDown)
+                } else if dy <= -1.0 {
+                    Some(MouseButton::WheelUp)
+                } else {
+                    None
+                };
+                if let Some(button) = button {
+                    let _ = c.mouse.press(button);
+                    let _ = c.mouse.release(button);
+                }
+                glib::signal::Inhibit(true)
+            }));
+
             self.area.set_sensitive(true);
             self.area.set_focusable(true);
             self.area.set_focus_on_click(true);
