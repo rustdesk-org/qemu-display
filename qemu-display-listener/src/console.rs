@@ -75,11 +75,7 @@ impl Console {
             let mut s = zbus::ObjectServer::new(&c);
             let listener = Listener::new(tx, wait_rx);
             let err = listener.err();
-            s.at(
-                "/org/qemu/Display1/Listener",
-                listener
-            )
-            .unwrap();
+            s.at("/org/qemu/Display1/Listener", listener).unwrap();
             loop {
                 if let Err(e) = s.try_handle_next() {
                     eprintln!("Listener DBus error: {}", e);
@@ -109,11 +105,7 @@ impl Console {
             let mut s = zbus::ObjectServer::new(&c);
             let listener = Listener::new(tx, wait_rx);
             let err = listener.err();
-            s.at(
-                "/org/qemu/Display1/Listener",
-                listener
-            )
-            .unwrap();
+            s.at("/org/qemu/Display1/Listener", listener).unwrap();
             loop {
                 if let Err(e) = s.try_handle_next() {
                     eprintln!("Listener DBus error: {}", e);

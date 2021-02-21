@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::ops::Drop;
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::sync::mpsc::{Receiver, RecvError, SendError, Sender};
 use std::sync::Arc;
-use std::sync::mpsc::{RecvError, SendError, Sender, Receiver};
 
 use zbus::{dbus_interface, export::zvariant::Fd};
 

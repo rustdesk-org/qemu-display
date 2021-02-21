@@ -2,7 +2,7 @@ use glib::clone;
 use glib::subclass::prelude::*;
 use gtk::prelude::*;
 use gtk::subclass::widget::WidgetImplExt;
-use gtk::{glib, CompositeTemplate};
+use gtk::{gdk, glib, CompositeTemplate};
 use once_cell::sync::OnceCell;
 use std::cell::Cell;
 
@@ -170,6 +170,12 @@ impl QemuConsole {
                     }
                     Event::Disconnected => {
                         priv_.label.set_label("Console disconnected!");
+                    }
+                    Event::CursorDefine { width, height, hot_x, hot_y, data }=> {
+                        let bytes = glib::Bytes::from(&data);
+                        let tex = gdk::MemoryTexture::new(width, height, gdk::MemoryFormat::B8g8r8a8, &bytes, width as usize * 4);
+                        let cur = gdk::Cursor::from_texture(&tex, hot_x, hot_y, None);
+                        priv_.area.set_cursor(Some(&cur));
                     }
                     _ => ()
                 }
