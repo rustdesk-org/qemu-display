@@ -92,7 +92,7 @@ impl QemuApplication {
     pub fn new() -> Self {
         glib::Object::new(&[
             ("application-id", &Some(config::APP_ID)),
-            ("flags", &ApplicationFlags::empty()),
+            ("flags", &ApplicationFlags::NON_UNIQUE),
         ])
         .expect("Application initialization failed...")
     }

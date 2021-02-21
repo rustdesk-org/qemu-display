@@ -192,6 +192,7 @@ impl QemuConsole {
             }),
         );
         priv_.console.set(console).unwrap();
+        priv_.area.grab_focus();
     }
 
     fn qemu_console(&self) -> &Console {
