@@ -1,5 +1,6 @@
 use glib::clone;
 use glib::subclass::prelude::*;
+use gtk::glib::translate::FromGlibPtrBorrow;
 use gtk::prelude::*;
 use gtk::subclass::widget::WidgetImplExt;
 use gtk::{gdk, glib, CompositeTemplate};
@@ -162,7 +163,15 @@ impl QemuConsole {
                 match t {
                     Event::Update { .. } => {
                         priv_.wait_rendering.set(priv_.wait_rendering.get() + 1);
-                        priv_.area.queue_render();
+                        // we don't simply queue_render, as we want a copy immediately
+                        priv_.area.make_current();
+                        priv_.area.attach_buffers();
+                        let _ = unsafe {
+                            glib::Object::from_glib_borrow(priv_.area.as_ptr() as *mut glib::gobject_ffi::GObject)
+                                .emit("render", &[&priv_.area.get_context().as_ref()])
+                                .unwrap()
+                        };
+                        priv_.area.queue_draw();
                     }
                     Event::Scanout(s) => {
                         priv_.label.set_label(&format!("{:?}", s));
