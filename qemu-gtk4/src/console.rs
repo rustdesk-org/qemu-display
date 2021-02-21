@@ -114,6 +114,19 @@ mod imp {
             self.area.set_sensitive(true);
             self.area.set_focusable(true);
             self.area.set_focus_on_click(true);
+
+            unsafe {
+                self.area.connect_notify_unsafe(
+                    Some("resize-hack"),
+                    clone!(@weak obj => move |_, _| {
+                        let priv_ = imp::QemuConsole::from_instance(&obj);
+                        let alloc = priv_.area.get_allocation();
+                        if let Err(e) = obj.qemu_console().proxy.set_ui_info(0, 0, 0, 0, alloc.width as u32, alloc.height as u32) {
+                            eprintln!("Failed to SetUIInfo: {}", e);
+                        }
+                    }),
+                );
+            }
         }
 
         // Needed for direct subclasses of GtkWidget;
@@ -126,11 +139,7 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for QemuConsole {
-        fn size_allocate(&self, widget: &Self::Type, width: i32, height: i32, baseline: i32) {
-            self.parent_size_allocate(widget, width, height, baseline);
-        }
-    }
+    impl WidgetImpl for QemuConsole {}
 }
 
 glib::wrapper! {

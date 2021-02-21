@@ -12,6 +12,18 @@ pub trait Console {
     /// RegisterListener method
     fn register_listener(&self, listener: Fd) -> zbus::Result<()>;
 
+    /// SetUIInfo method
+    #[dbus_proxy(name = "SetUIInfo")]
+    fn set_ui_info(
+        &self,
+        width_mm: u16,
+        height_mm: u16,
+        xoff: i32,
+        yoff: i32,
+        width: u32,
+        height: u32,
+    ) -> zbus::Result<()>;
+
     #[dbus_proxy(property)]
     fn label(&self) -> zbus::Result<String>;
 

@@ -63,6 +63,29 @@ mod imp {
         fn constructed(&self, obj: &Self::Type) {
             self.parent_constructed(obj);
         }
+
+        fn properties() -> &'static [glib::ParamSpec] {
+            use once_cell::sync::Lazy;
+            static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
+                vec![glib::ParamSpec::boolean(
+                    "resize-hack",
+                    "resize-hack",
+                    "Resize hack to notify parent",
+                    false,
+                    glib::ParamFlags::READWRITE | glib::ParamFlags::CONSTRUCT,
+                )]
+            });
+            PROPERTIES.as_ref()
+        }
+
+        fn set_property(
+            &self,
+            _obj: &Self::Type,
+            _id: usize,
+            _value: &glib::Value,
+            _pspec: &glib::ParamSpec,
+        ) {
+        }
     }
 
     impl WidgetImpl for QemuConsoleArea {
@@ -78,6 +101,11 @@ mod imp {
                 let e = glib::Error::new(AppError::GL, &e.to_string());
                 widget.set_error(Some(&e));
             }
+        }
+
+        fn size_allocate(&self, widget: &Self::Type, width: i32, height: i32, baseline: i32) {
+            self.parent_size_allocate(widget, width, height, baseline);
+            widget.notify("resize-hack");
         }
     }
 
