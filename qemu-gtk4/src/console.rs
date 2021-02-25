@@ -2,7 +2,6 @@ use glib::clone;
 use glib::subclass::prelude::*;
 use gtk::glib::translate::FromGlibPtrBorrow;
 use gtk::prelude::*;
-use gtk::subclass::widget::WidgetImplExt;
 use gtk::{gdk, glib, CompositeTemplate};
 use once_cell::sync::OnceCell;
 use std::cell::Cell;
