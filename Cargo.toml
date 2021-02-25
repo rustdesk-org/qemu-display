@@ -3,9 +3,11 @@ members = [
     "keycodemap",
     "qemu-display-listener",
     "qemu-gtk4",
+    "qemu-vnc",
     "xtask",
 ]
 
 [patch.crates-io]
 zbus = { path = '/home/elmarco/src/zbus/zbus' }
 zvariant = { path = '/home/elmarco/src/zbus/zvariant' }
+vnc = { git = 'https://github.com/elmarco/rust-vnc', branch = 'server' }
