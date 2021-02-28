@@ -169,7 +169,19 @@ impl QemuConsole {
             clone!(@weak self as con => move |t| {
                 let priv_ = imp::QemuConsole::from_instance(&con);
                 match t {
-                    Event::Update { .. } => {
+                    Event::Scanout(s) => {
+                        priv_.area.set_scanout(s);
+                        priv_.area.queue_render();
+                    }
+                    Event::Update(u) => {
+                        priv_.area.update(u);
+                        priv_.area.queue_render();
+                    }
+                    Event::ScanoutDMABUF(s) => {
+                        priv_.label.set_label(&format!("{:?}", s));
+                        priv_.area.set_scanout_dmabuf(s);
+                    }
+                    Event::UpdateDMABUF { .. } => {
                         priv_.wait_rendering.set(priv_.wait_rendering.get() + 1);
                         // we don't simply queue_render, as we want a copy immediately
                         priv_.area.make_current();
@@ -181,10 +193,6 @@ impl QemuConsole {
                         };
                         priv_.area.queue_draw();
                     }
-                    Event::Scanout(s) => {
-                        priv_.label.set_label(&format!("{:?}", s));
-                        priv_.area.set_scanout(s);
-                    }
                     Event::Disconnected => {
                         priv_.label.set_label("Console disconnected!");
                     }
@@ -194,7 +202,7 @@ impl QemuConsole {
                         let cur = gdk::Cursor::from_texture(&tex, hot_x, hot_y, None);
                         priv_.area.set_cursor(Some(&cur));
                     }
-                    _ => ()
+                    t => { dbg!(t); }
                 }
                 Continue(true)
             }),

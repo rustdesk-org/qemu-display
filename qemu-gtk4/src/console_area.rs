@@ -10,7 +10,7 @@ use std::ffi::{CStr, CString};
 use crate::egl;
 use crate::error::*;
 use gl::{self, types::*};
-use qemu_display_listener::Scanout;
+use qemu_display_listener::{Scanout, ScanoutDMABUF, Update};
 
 mod imp {
     use super::*;
@@ -22,7 +22,7 @@ mod imp {
         pub texture_blit_vao: Cell<GLuint>,
         pub texture_blit_prog: Cell<GLuint>,
         pub texture_blit_flip_prog: Cell<GLuint>,
-        pub scanout: Cell<Option<Scanout>>,
+        pub scanout: Cell<Option<ScanoutDMABUF>>,
         pub scanout_size: Cell<(u32, u32)>,
     }
 
@@ -229,6 +229,58 @@ mod imp {
 
         pub fn set_scanout(&self, widget: &super::QemuConsoleArea, s: Scanout) {
             widget.make_current();
+
+            if s.format != 0x20020888 {
+                todo!();
+            }
+            unsafe {
+                gl::BindTexture(gl::TEXTURE_2D, self.tex_id());
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
+                gl::PixelStorei(gl::UNPACK_ROW_LENGTH, s.stride as i32 / 4);
+                gl::TexImage2D(
+                    gl::TEXTURE_2D,
+                    0,
+                    gl::RGB as _,
+                    s.width as _,
+                    s.height as _,
+                    0,
+                    gl::BGRA,
+                    gl::UNSIGNED_BYTE,
+                    s.data.as_ptr() as _,
+                );
+            }
+
+            self.scanout_size.set((s.width, s.height));
+        }
+
+        pub fn update(&self, widget: &super::QemuConsoleArea, u: Update) {
+            widget.make_current();
+
+            if u.format != 0x20020888 {
+                todo!();
+            }
+            unsafe {
+                gl::BindTexture(gl::TEXTURE_2D, self.tex_id());
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
+                gl::PixelStorei(gl::UNPACK_ROW_LENGTH, u.stride as i32 / 4);
+                gl::TexSubImage2D(
+                    gl::TEXTURE_2D,
+                    0,
+                    u.x,
+                    u.y,
+                    u.w,
+                    u.h,
+                    gl::BGRA,
+                    gl::UNSIGNED_BYTE,
+                    u.data.as_ptr() as _,
+                );
+            }
+        }
+
+        pub fn set_scanout_dmabuf(&self, widget: &super::QemuConsoleArea, s: ScanoutDMABUF) {
+            widget.make_current();
             let egl = egl::egl();
 
             let egl_dpy = if let Ok(dpy) = widget.get_display().downcast::<gdk_wl::WaylandDisplay>()
@@ -313,6 +365,18 @@ impl QemuConsoleArea {
         let priv_ = imp::QemuConsoleArea::from_instance(self);
 
         priv_.set_scanout(self, s);
+    }
+
+    pub fn update(&self, u: Update) {
+        let priv_ = imp::QemuConsoleArea::from_instance(self);
+
+        priv_.update(self, u);
+    }
+
+    pub fn set_scanout_dmabuf(&self, s: ScanoutDMABUF) {
+        let priv_ = imp::QemuConsoleArea::from_instance(self);
+
+        priv_.set_scanout_dmabuf(self, s);
     }
 
     pub fn save_to_png(&self, filename: &str) {

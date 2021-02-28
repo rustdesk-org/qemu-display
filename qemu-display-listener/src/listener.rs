@@ -4,10 +4,35 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::mpsc::{Receiver, RecvError, SendError, Sender};
 use std::sync::Arc;
 
+use derivative::Derivative;
 use zbus::{dbus_interface, export::zvariant::Fd};
 
-#[derive(Debug)]
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct Scanout {
+    pub width: u32,
+    pub height: u32,
+    pub stride: u32,
+    pub format: u32,
+    #[derivative(Debug = "ignore")]
+    pub data: Vec<u8>,
+}
+
+#[derive(Derivative)]
+#[derivative(Debug)]
+pub struct Update {
+    pub x: i32,
+    pub y: i32,
+    pub w: i32,
+    pub h: i32,
+    pub stride: u32,
+    pub format: u32,
+    #[derivative(Debug = "ignore")]
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug)]
+pub struct ScanoutDMABUF {
     pub fd: RawFd,
     pub width: u32,
     pub height: u32,
@@ -17,7 +42,7 @@ pub struct Scanout {
     pub y0_top: bool,
 }
 
-impl Drop for Scanout {
+impl Drop for ScanoutDMABUF {
     fn drop(&mut self) {
         if self.fd >= 0 {
             unsafe {
@@ -30,11 +55,10 @@ impl Drop for Scanout {
 // TODO: replace events mpsc with async traits
 #[derive(Debug)]
 pub enum Event {
-    Switch {
-        width: i32,
-        height: i32,
-    },
-    Update {
+    Scanout(Scanout),
+    Update(Update),
+    ScanoutDMABUF(ScanoutDMABUF),
+    UpdateDMABUF {
         x: i32,
         y: i32,
         w: i32,
@@ -52,7 +76,6 @@ pub enum Event {
         hot_y: i32,
         data: Vec<u8>,
     },
-    Scanout(Scanout),
     Disconnected,
 }
 
@@ -82,18 +105,46 @@ pub(crate) struct Listener<E: EventSender> {
 
 #[dbus_interface(name = "org.qemu.Display1.Listener")]
 impl<E: 'static + EventSender> Listener<E> {
-    fn switch(&mut self, width: i32, height: i32) {
-        self.send(Event::Switch { width, height })
-    }
-
-    fn update(&mut self, x: i32, y: i32, w: i32, h: i32) {
-        self.send(Event::Update { x, y, w, h });
-        if let Err(e) = self.wait() {
-            eprintln!("update returned error: {}", e)
-        }
-    }
-
     fn scanout(
+        &mut self,
+        width: u32,
+        height: u32,
+        stride: u32,
+        format: u32,
+        data: serde_bytes::ByteBuf,
+    ) {
+        self.send(Event::Scanout(Scanout {
+            width,
+            height,
+            stride,
+            format,
+            data: data.into_vec(),
+        }))
+    }
+
+    fn update(
+        &mut self,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        stride: u32,
+        format: u32,
+        data: serde_bytes::ByteBuf,
+    ) {
+        self.send(Event::Update(Update {
+            x,
+            y,
+            w,
+            h,
+            stride,
+            format,
+            data: data.into_vec(),
+        }))
+    }
+
+    #[dbus_interface(name = "ScanoutDMABUF")]
+    fn scanout_dmabuf(
         &mut self,
         fd: Fd,
         width: u32,
@@ -104,7 +155,7 @@ impl<E: 'static + EventSender> Listener<E> {
         y0_top: bool,
     ) {
         let fd = unsafe { libc::dup(fd.as_raw_fd()) };
-        self.send(Event::Scanout(Scanout {
+        self.send(Event::ScanoutDMABUF(ScanoutDMABUF {
             fd,
             width,
             height,
@@ -113,6 +164,14 @@ impl<E: 'static + EventSender> Listener<E> {
             modifier,
             y0_top,
         }))
+    }
+
+    #[dbus_interface(name = "UpdateDMABUF")]
+    fn update_dmabuf(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        self.send(Event::UpdateDMABUF { x, y, w, h });
+        if let Err(e) = self.wait() {
+            eprintln!("update returned error: {}", e)
+        }
     }
 
     fn mouse_set(&mut self, x: i32, y: i32, on: i32) {

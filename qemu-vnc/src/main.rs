@@ -1,12 +1,15 @@
 use std::error::Error;
 use std::net::{TcpListener, TcpStream};
-use std::{thread, time, io};
 use std::sync::{Arc, Mutex};
+use std::{io, thread, time};
 
-use qemu_display_listener::{Console, Event};
-use zbus::Connection;
 use clap::Clap;
-use vnc::{server::FramebufferUpdate, server::Event as VncEvent, PixelFormat, Rect, Server as VncServer, Error as VncError};
+use qemu_display_listener::{Console, Event};
+use vnc::{
+    server::Event as VncEvent, server::FramebufferUpdate, Error as VncError, PixelFormat, Rect,
+    Server as VncServer,
+};
+use zbus::Connection;
 
 #[derive(Clap, Debug)]
 pub struct SocketAddrArgs {
@@ -30,7 +33,6 @@ struct Cli {
     address: SocketAddrArgs,
 }
 
-
 struct ServerInner {
     width: u16,
     height: u16,
@@ -43,10 +45,7 @@ struct Server {
 impl Server {
     fn new(width: u16, height: u16) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(ServerInner {
-                width,
-                height,
-            }))
+            inner: Arc::new(Mutex::new(ServerInner { width, height })),
         }
     }
 
@@ -65,11 +64,13 @@ impl Server {
                 Ok(e) => e,
                 Err(VncError::Io(ref e)) if e.kind() == io::ErrorKind::WouldBlock => {
                     continue;
-                },
+                }
                 Err(VncError::Disconnected) => {
                     return Ok(());
                 }
-                Err(e) => { return Err(e.into()); }
+                Err(e) => {
+                    return Err(e.into());
+                }
             };
             match event {
                 VncEvent::FramebufferUpdateRequest { .. } => {
@@ -108,16 +109,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let server = Server::new(console.width()? as u16, console.height()? as u16);
 
-    let _thread = thread::spawn(move || {
-        match rx.recv().unwrap() {
-            Event::Scanout(s) => {
-                dbg!(&s);
-                unsafe {
-                    libc::close(s.fd);
-                }
-                let _ = ack.send(());
-            },
-            e => { dbg!(e); },
+    let _thread = thread::spawn(move || match rx.recv().unwrap() {
+        Event::ScanoutDMABUF(s) => {
+            dbg!(&s);
+            unsafe {
+                libc::close(s.fd);
+            }
+            let _ = ack.send(());
+        }
+        e => {
+            dbg!(e);
         }
     });
     for stream in listener.incoming() {

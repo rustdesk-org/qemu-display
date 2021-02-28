@@ -17,6 +17,7 @@ khronos-egl = { version = "3.0.0", features = ["dynamic"] }
 libloading = "0.6"
 gl = "0.14.0"
 glib = { git = "https://github.com/gtk-rs/gtk-rs", optional = true }
+derivative = "2.2.0"
 
 [dependencies.gtk]
 package = "gtk4"
