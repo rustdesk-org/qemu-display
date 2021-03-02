@@ -22,6 +22,7 @@ mod imp {
     pub struct QemuApplication {
         pub window: OnceCell<WeakRef<QemuApplicationWindow>>,
         pub conn: OnceCell<Connection>,
+        pub addr: OnceCell<String>,
     }
 
     impl ObjectSubclass for QemuApplication {
@@ -38,6 +39,7 @@ mod imp {
             Self {
                 window: OnceCell::new(),
                 conn: OnceCell::new(),
+                addr: OnceCell::new(),
             }
         }
     }
@@ -45,11 +47,36 @@ mod imp {
     impl ObjectImpl for QemuApplication {}
 
     impl gio::subclass::prelude::ApplicationImpl for QemuApplication {
+        fn handle_local_options(
+            &self,
+            application: &Self::Type,
+            options: &glib::VariantDict,
+        ) -> i32 {
+            if options.lookup_value("version", None).is_some() {
+                println!("Version: {} ({})", config::VERSION, config::PROFILE);
+                return 0;
+            }
+
+            self.parent_handle_local_options(application, options)
+        }
+
+        fn command_line(
+            &self,
+            application: &Self::Type,
+            command_line: &gio::ApplicationCommandLine,
+        ) -> i32 {
+            let mut opt = command_line.get_arguments().into_iter().skip(1);
+            if let Some(arg) = opt.next() {
+                self.addr.set(arg.into_string().unwrap()).unwrap();
+            }
+            application.activate();
+            self.parent_command_line(application, command_line)
+        }
+
         fn activate(&self, app: &Self::Type) {
             debug!("GtkApplication<QemuApplication>::activate");
 
-            let priv_ = QemuApplication::from_instance(app);
-            if let Some(window) = priv_.window.get() {
+            if let Some(window) = self.window.get() {
                 let window = window.upgrade().unwrap();
                 window.show();
                 window.present();
@@ -59,7 +86,12 @@ mod imp {
             app.set_resource_base_path(Some("/org/qemu/gtk4/"));
             app.setup_css();
 
-            let conn = Connection::new_session().expect("Failed to connect");
+            let conn = if let Some(addr) = self.addr.get() {
+                Connection::new_for_address(&addr, true)
+            } else {
+                Connection::new_session()
+            }
+            .expect("Failed to connect to DBus");
             let console = Console::new(&conn, 0).expect("Failed to get the console");
             self.conn.set(conn).expect("Connection already set.");
 
@@ -90,11 +122,23 @@ glib::wrapper! {
 
 impl QemuApplication {
     pub fn new() -> Self {
-        glib::Object::new(&[
+        let app = glib::Object::new::<Self>(&[
             ("application-id", &Some(config::APP_ID)),
-            ("flags", &ApplicationFlags::NON_UNIQUE),
+            (
+                "flags",
+                &(ApplicationFlags::NON_UNIQUE | ApplicationFlags::HANDLES_COMMAND_LINE),
+            ),
         ])
-        .expect("Application initialization failed...")
+        .expect("Application initialization failed...");
+        app.add_main_option(
+            "version",
+            glib::Char(0),
+            glib::OptionFlags::NONE,
+            glib::OptionArg::None,
+            "Show program version",
+            None,
+        );
+        app
     }
 
     fn get_main_window(&self) -> QemuApplicationWindow {
