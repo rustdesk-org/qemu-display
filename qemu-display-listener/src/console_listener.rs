@@ -54,7 +54,7 @@ impl Drop for ScanoutDMABUF {
 
 // TODO: replace events mpsc with async traits
 #[derive(Debug)]
-pub enum Event {
+pub enum ConsoleEvent {
     Scanout(Scanout),
     Update(Update),
     ScanoutDMABUF(ScanoutDMABUF),
@@ -80,31 +80,31 @@ pub enum Event {
 }
 
 pub(crate) trait EventSender {
-    fn send_event(&self, t: Event) -> Result<(), SendError<Event>>;
+    fn send_event(&self, t: ConsoleEvent) -> Result<(), SendError<ConsoleEvent>>;
 }
 
-impl EventSender for Sender<Event> {
-    fn send_event(&self, t: Event) -> Result<(), SendError<Event>> {
+impl EventSender for Sender<ConsoleEvent> {
+    fn send_event(&self, t: ConsoleEvent) -> Result<(), SendError<ConsoleEvent>> {
         self.send(t)
     }
 }
 
 #[cfg(feature = "glib")]
-impl EventSender for glib::Sender<Event> {
-    fn send_event(&self, t: Event) -> Result<(), SendError<Event>> {
+impl EventSender for glib::Sender<ConsoleEvent> {
+    fn send_event(&self, t: ConsoleEvent) -> Result<(), SendError<ConsoleEvent>> {
         self.send(t)
     }
 }
 
 #[derive(Debug)]
-pub(crate) struct Listener<E: EventSender> {
+pub(crate) struct ConsoleListener<E: EventSender> {
     tx: E,
     wait_rx: Receiver<()>,
-    err: Arc<RefCell<Option<SendError<Event>>>>,
+    err: Arc<RefCell<Option<SendError<ConsoleEvent>>>>,
 }
 
 #[dbus_interface(name = "org.qemu.Display1.Listener")]
-impl<E: 'static + EventSender> Listener<E> {
+impl<E: 'static + EventSender> ConsoleListener<E> {
     fn scanout(
         &mut self,
         width: u32,
@@ -113,7 +113,7 @@ impl<E: 'static + EventSender> Listener<E> {
         format: u32,
         data: serde_bytes::ByteBuf,
     ) {
-        self.send(Event::Scanout(Scanout {
+        self.send(ConsoleEvent::Scanout(Scanout {
             width,
             height,
             stride,
@@ -132,7 +132,7 @@ impl<E: 'static + EventSender> Listener<E> {
         format: u32,
         data: serde_bytes::ByteBuf,
     ) {
-        self.send(Event::Update(Update {
+        self.send(ConsoleEvent::Update(Update {
             x,
             y,
             w,
@@ -155,7 +155,7 @@ impl<E: 'static + EventSender> Listener<E> {
         y0_top: bool,
     ) {
         let fd = unsafe { libc::dup(fd.as_raw_fd()) };
-        self.send(Event::ScanoutDMABUF(ScanoutDMABUF {
+        self.send(ConsoleEvent::ScanoutDMABUF(ScanoutDMABUF {
             fd,
             width,
             height,
@@ -168,18 +168,18 @@ impl<E: 'static + EventSender> Listener<E> {
 
     #[dbus_interface(name = "UpdateDMABUF")]
     fn update_dmabuf(&mut self, x: i32, y: i32, w: i32, h: i32) {
-        self.send(Event::UpdateDMABUF { x, y, w, h });
+        self.send(ConsoleEvent::UpdateDMABUF { x, y, w, h });
         if let Err(e) = self.wait() {
             eprintln!("update returned error: {}", e)
         }
     }
 
     fn mouse_set(&mut self, x: i32, y: i32, on: i32) {
-        self.send(Event::MouseSet { x, y, on })
+        self.send(ConsoleEvent::MouseSet { x, y, on })
     }
 
     fn cursor_define(&mut self, width: i32, height: i32, hot_x: i32, hot_y: i32, data: Vec<u8>) {
-        self.send(Event::CursorDefine {
+        self.send(ConsoleEvent::CursorDefine {
             width,
             height,
             hot_x,
@@ -189,13 +189,13 @@ impl<E: 'static + EventSender> Listener<E> {
     }
 }
 
-impl<E: EventSender> Listener<E> {
+impl<E: EventSender> ConsoleListener<E> {
     pub(crate) fn new(tx: E, wait_rx: Receiver<()>) -> Self {
         let err = Arc::new(RefCell::new(None));
-        Listener { tx, wait_rx, err }
+        ConsoleListener { tx, wait_rx, err }
     }
 
-    fn send(&mut self, event: Event) {
+    fn send(&mut self, event: ConsoleEvent) {
         if let Err(e) = self.tx.send_event(event) {
             *self.err.borrow_mut() = Some(e);
         }
@@ -205,13 +205,13 @@ impl<E: EventSender> Listener<E> {
         self.wait_rx.recv()
     }
 
-    pub fn err(&self) -> Arc<RefCell<Option<SendError<Event>>>> {
+    pub fn err(&self) -> Arc<RefCell<Option<SendError<ConsoleEvent>>>> {
         self.err.clone()
     }
 }
 
-impl<E: EventSender> Drop for Listener<E> {
+impl<E: EventSender> Drop for ConsoleListener<E> {
     fn drop(&mut self) {
-        self.send(Event::Disconnected)
+        self.send(ConsoleEvent::Disconnected)
     }
 }

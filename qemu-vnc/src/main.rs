@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::{io, thread, time};
 
 use clap::Clap;
-use qemu_display_listener::{Console, Event};
+use qemu_display_listener::{Console, ConsoleEvent};
 use vnc::{
     server::Event as VncEvent, server::FramebufferUpdate, Error as VncError, PixelFormat, Rect,
     Server as VncServer,
@@ -110,7 +110,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let server = Server::new(console.width()? as u16, console.height()? as u16);
 
     let _thread = thread::spawn(move || match rx.recv().unwrap() {
-        Event::ScanoutDMABUF(s) => {
+        ConsoleEvent::ScanoutDMABUF(s) => {
             dbg!(&s);
             unsafe {
                 libc::close(s.fd);

@@ -7,7 +7,7 @@ use once_cell::sync::OnceCell;
 use std::cell::Cell;
 
 use keycodemap::*;
-use qemu_display_listener::{Console, Event, MouseButton};
+use qemu_display_listener::{Console, ConsoleEvent as Event, MouseButton};
 
 mod imp {
     use super::*;

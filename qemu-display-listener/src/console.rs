@@ -5,7 +5,7 @@ use std::{os::unix::io::AsRawFd, thread};
 use zbus::{dbus_proxy, export::zvariant::Fd};
 
 use crate::Result;
-use crate::{Event, KeyboardProxy, Listener, MouseProxy};
+use crate::{ConsoleEvent, KeyboardProxy, ConsoleListener, MouseProxy};
 
 #[dbus_proxy(default_service = "org.qemu", interface = "org.qemu.Display1.Console")]
 pub trait Console {
@@ -76,7 +76,7 @@ impl Console {
         Ok(self.proxy.height()?)
     }
 
-    pub fn listen(&self) -> Result<(Receiver<Event>, Sender<()>)> {
+    pub fn listen(&self) -> Result<(Receiver<ConsoleEvent>, Sender<()>)> {
         let (p0, p1) = UnixStream::pair()?;
         let (tx, rx) = mpsc::channel();
         self.proxy.register_listener(p0.as_raw_fd().into())?;
@@ -85,7 +85,7 @@ impl Console {
         let _thread = thread::spawn(move || {
             let c = zbus::Connection::new_unix_client(p1, false).unwrap();
             let mut s = zbus::ObjectServer::new(&c);
-            let listener = Listener::new(tx, wait_rx);
+            let listener = ConsoleListener::new(tx, wait_rx);
             let err = listener.err();
             s.at("/org/qemu/Display1/Listener", listener).unwrap();
             loop {
@@ -106,7 +106,7 @@ impl Console {
 
 #[cfg(feature = "glib")]
 impl Console {
-    pub fn glib_listen(&self) -> Result<(glib::Receiver<Event>, Sender<()>)> {
+    pub fn glib_listen(&self) -> Result<(glib::Receiver<ConsoleEvent>, Sender<()>)> {
         let (p0, p1) = UnixStream::pair()?;
         let (tx, rx) = glib::MainContext::channel(glib::source::Priority::default());
         self.proxy.register_listener(p0.as_raw_fd().into())?;
@@ -115,7 +115,7 @@ impl Console {
         let _thread = thread::spawn(move || {
             let c = zbus::Connection::new_unix_client(p1, false).unwrap();
             let mut s = zbus::ObjectServer::new(&c);
-            let listener = Listener::new(tx, wait_rx);
+            let listener = ConsoleListener::new(tx, wait_rx);
             let err = listener.err();
             s.at("/org/qemu/Display1/Listener", listener).unwrap();
             loop {
