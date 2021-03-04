@@ -1,11 +1,13 @@
 use std::cell::RefCell;
 use std::ops::Drop;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::mpsc::{Receiver, RecvError, SendError, Sender};
+use std::sync::mpsc::{Receiver, RecvError, SendError};
 use std::sync::Arc;
 
 use derivative::Derivative;
 use zbus::{dbus_interface, export::zvariant::Fd};
+
+use crate::EventSender;
 
 #[derive(Derivative)]
 #[derivative(Debug)]
@@ -79,32 +81,15 @@ pub enum ConsoleEvent {
     Disconnected,
 }
 
-pub(crate) trait EventSender {
-    fn send_event(&self, t: ConsoleEvent) -> Result<(), SendError<ConsoleEvent>>;
-}
-
-impl EventSender for Sender<ConsoleEvent> {
-    fn send_event(&self, t: ConsoleEvent) -> Result<(), SendError<ConsoleEvent>> {
-        self.send(t)
-    }
-}
-
-#[cfg(feature = "glib")]
-impl EventSender for glib::Sender<ConsoleEvent> {
-    fn send_event(&self, t: ConsoleEvent) -> Result<(), SendError<ConsoleEvent>> {
-        self.send(t)
-    }
-}
-
 #[derive(Debug)]
-pub(crate) struct ConsoleListener<E: EventSender> {
+pub(crate) struct ConsoleListener<E: EventSender<Event = ConsoleEvent>> {
     tx: E,
     wait_rx: Receiver<()>,
     err: Arc<RefCell<Option<SendError<ConsoleEvent>>>>,
 }
 
 #[dbus_interface(name = "org.qemu.Display1.Listener")]
-impl<E: 'static + EventSender> ConsoleListener<E> {
+impl<E: 'static + EventSender<Event = ConsoleEvent>> ConsoleListener<E> {
     fn scanout(
         &mut self,
         width: u32,
@@ -189,7 +174,7 @@ impl<E: 'static + EventSender> ConsoleListener<E> {
     }
 }
 
-impl<E: EventSender> ConsoleListener<E> {
+impl<E: EventSender<Event = ConsoleEvent>> ConsoleListener<E> {
     pub(crate) fn new(tx: E, wait_rx: Receiver<()>) -> Self {
         let err = Arc::new(RefCell::new(None));
         ConsoleListener { tx, wait_rx, err }
@@ -210,7 +195,7 @@ impl<E: EventSender> ConsoleListener<E> {
     }
 }
 
-impl<E: EventSender> Drop for ConsoleListener<E> {
+impl<E: EventSender<Event = ConsoleEvent>> Drop for ConsoleListener<E> {
     fn drop(&mut self) {
         self.send(ConsoleEvent::Disconnected)
     }

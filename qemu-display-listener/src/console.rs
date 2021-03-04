@@ -5,7 +5,7 @@ use std::{os::unix::io::AsRawFd, thread};
 use zbus::{dbus_proxy, export::zvariant::Fd};
 
 use crate::Result;
-use crate::{ConsoleEvent, KeyboardProxy, ConsoleListener, MouseProxy};
+use crate::{ConsoleEvent, ConsoleListener, KeyboardProxy, MouseProxy};
 
 #[dbus_proxy(default_service = "org.qemu", interface = "org.qemu.Display1.Console")]
 pub trait Console {
