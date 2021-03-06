@@ -9,8 +9,8 @@ use event_sender::*;
 mod vm;
 pub use vm::*;
 
-// mod audio;
-// pub use audio::*;
+mod audio;
+pub use audio::*;
 
 mod console;
 pub use console::*;
