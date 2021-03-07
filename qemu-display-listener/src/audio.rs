@@ -9,54 +9,31 @@ use zbus::{dbus_interface, dbus_proxy, export::zvariant::Fd};
 use crate::{EventSender, Result};
 
 #[derive(Debug)]
+pub struct PCMInfo {
+    pub bits: u8,
+    pub is_signed: bool,
+    pub is_float: bool,
+    pub freq: u32,
+    pub nchannels: u8,
+    pub bytes_per_frame: u32,
+    pub bytes_per_second: u32,
+    pub be: bool,
+}
+
+#[derive(Debug)]
 pub enum AudioOutEvent {
-    Init {
-        id: u64,
-        bits: u8,
-        is_signed: bool,
-        is_float: bool,
-        freq: u32,
-        nchannels: u8,
-        bytes_per_frame: u32,
-        bytes_per_second: u32,
-        swap_endianness: u32,
-    },
-    Fini {
-        id: u64,
-    },
-    SetEnabled {
-        id: u64,
-        enabled: bool,
-    },
-    Write {
-        id: u64,
-        data: Vec<u8>,
-    },
+    Init { id: u64, info: PCMInfo },
+    Fini { id: u64 },
+    SetEnabled { id: u64, enabled: bool },
+    Write { id: u64, data: Vec<u8> },
 }
 
 #[derive(Debug)]
 pub enum AudioInEvent {
-    Init {
-        id: u64,
-        bits: u8,
-        is_signed: bool,
-        is_float: bool,
-        freq: u32,
-        nchannels: u8,
-        bytes_per_frame: u32,
-        bytes_per_second: u32,
-        swap_endianness: u32,
-    },
-    Fini {
-        id: u64,
-    },
-    SetEnabled {
-        id: u64,
-        enabled: bool,
-    },
-    Read {
-        id: u64,
-    },
+    Init { id: u64, info: PCMInfo },
+    Fini { id: u64 },
+    SetEnabled { id: u64, enabled: bool },
+    Read { id: u64 },
 }
 
 #[dbus_proxy(
@@ -115,18 +92,20 @@ impl<E: 'static + EventSender<Event = AudioOutEvent>> AudioOutListener<E> {
         nchannels: u8,
         bytes_per_frame: u32,
         bytes_per_second: u32,
-        swap_endianness: u32,
+        be: bool,
     ) {
         self.send(AudioOutEvent::Init {
             id,
-            bits,
-            is_signed,
-            is_float,
-            freq,
-            nchannels,
-            bytes_per_frame,
-            bytes_per_second,
-            swap_endianness,
+            info: PCMInfo {
+                bits,
+                is_signed,
+                is_float,
+                freq,
+                nchannels,
+                bytes_per_frame,
+                bytes_per_second,
+                be,
+            },
         })
     }
 
@@ -185,18 +164,20 @@ impl<E: 'static + EventSender<Event = AudioInEvent>> AudioInListener<E> {
         nchannels: u8,
         bytes_per_frame: u32,
         bytes_per_second: u32,
-        swap_endianness: u32,
+        be: bool,
     ) {
         self.send(AudioInEvent::Init {
             id,
-            bits,
-            is_signed,
-            is_float,
-            freq,
-            nchannels,
-            bytes_per_frame,
-            bytes_per_second,
-            swap_endianness,
+            info: PCMInfo {
+                bits,
+                is_signed,
+                is_float,
+                freq,
+                nchannels,
+                bytes_per_frame,
+                bytes_per_second,
+                be,
+            },
         })
     }
 

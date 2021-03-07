@@ -11,7 +11,8 @@ use log::{debug, info};
 use once_cell::sync::OnceCell;
 use std::env;
 
-use qemu_display_listener::Console;
+use crate::gstaudio::GstAudio;
+use qemu_display_listener::{Audio, Console};
 use zbus::Connection;
 
 mod imp {
@@ -23,6 +24,7 @@ mod imp {
         pub window: OnceCell<WeakRef<QemuApplicationWindow>>,
         pub conn: OnceCell<Connection>,
         pub addr: OnceCell<String>,
+        pub audio: OnceCell<GstAudio>,
     }
 
     impl ObjectSubclass for QemuApplication {
@@ -40,6 +42,7 @@ mod imp {
                 window: OnceCell::new(),
                 conn: OnceCell::new(),
                 addr: OnceCell::new(),
+                audio: OnceCell::new(),
             }
         }
     }
@@ -92,6 +95,12 @@ mod imp {
                 Connection::new_session()
             }
             .expect("Failed to connect to DBus");
+
+            if let Ok(audio) = Audio::new(&conn) {
+                self.audio
+                    .set(GstAudio::new(audio).expect("Failed to setup audio"))
+                    .expect("Audio already set");
+            }
             let console = Console::new(&conn, 0).expect("Failed to get the console");
             self.conn.set(conn).expect("Connection already set.");
 

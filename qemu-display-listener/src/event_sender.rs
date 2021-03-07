@@ -1,4 +1,4 @@
-use std::sync::mpsc::{Sender, SendError};
+use std::sync::mpsc::{SendError, Sender};
 
 pub(crate) trait EventSender {
     type Event;

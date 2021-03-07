@@ -6,6 +6,7 @@ mod console;
 mod console_area;
 mod egl;
 mod error;
+mod gstaudio;
 mod window;
 
 use application::QemuApplication;

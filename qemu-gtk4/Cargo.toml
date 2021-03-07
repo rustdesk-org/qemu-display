@@ -18,6 +18,8 @@ libloading = "0.6"
 gl = "0.14.0"
 glib = { git = "https://github.com/gtk-rs/gtk-rs", optional = true }
 derivative = "2.2.0"
+gst = { package = "gstreamer", version = "0.16.7" }
+gst-app = { package = "gstreamer-app", version = "0.16.5" }
 
 [dependencies.gtk]
 package = "gtk4"
