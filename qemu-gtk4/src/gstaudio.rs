@@ -1,13 +1,15 @@
 use gst::prelude::*;
-
-use qemu_display_listener::{Audio, PCMInfo};
+use gst_audio::StreamVolumeExt;
 use std::thread::{self, JoinHandle};
 use std::{collections::HashMap, error::Error};
+
+use qemu_display_listener::{Audio, PCMInfo};
 
 #[derive(Debug)]
 struct OutStream {
     pipeline: gst::Pipeline,
     src: gst_app::AppSrc,
+    sink: gst::Element,
 }
 
 fn pcminfo_as_caps(info: &PCMInfo) -> String {
@@ -44,23 +46,28 @@ impl OutStream {
             .unwrap()
             .dynamic_cast::<gst_app::AppSrc>()
             .unwrap();
-
-        Ok(Self { pipeline, src })
+        let sink = pipeline.get_by_name("sink").unwrap();
+        Ok(Self {
+            pipeline,
+            src,
+            sink,
+        })
     }
 }
 
 #[derive(Debug)]
 pub struct GstAudio {
-    thread: JoinHandle<()>,
+    out_thread: JoinHandle<()>,
 }
 
 impl GstAudio {
     pub fn new(audio: Audio) -> Result<Self, Box<dyn Error>> {
         gst::init()?;
 
+        // TODO audio.listen_in() for capture.
         let rx = audio.listen_out()?;
         let mut out = HashMap::new();
-        let thread = thread::spawn(move || loop {
+        let out_thread = thread::spawn(move || loop {
             match rx.recv() {
                 Ok(event) => {
                     use qemu_display_listener::AudioOutEvent::*;
@@ -95,6 +102,28 @@ impl GstAudio {
                                 eprintln!("Stream was not setup yet: {}", id);
                             }
                         }
+                        SetVolume { id, volume } => {
+                            if let Some(s) = out.get(&id) {
+                                if let Some(stream_vol) = s
+                                    .pipeline
+                                    .get_by_interface(gst_audio::StreamVolume::static_type())
+                                {
+                                    let stream_vol = stream_vol
+                                        .dynamic_cast::<gst_audio::StreamVolume>()
+                                        .unwrap();
+                                    stream_vol.set_mute(volume.mute);
+                                    if let Some(vol) = volume.volume.first() {
+                                        let vol = *vol as f64 / 255f64;
+                                        stream_vol
+                                            .set_volume(gst_audio::StreamVolumeFormat::Cubic, vol);
+                                    }
+                                } else {
+                                    eprintln!("Volume not implemented for this pipeline");
+                                }
+                            } else {
+                                eprintln!("Stream was not setup yet: {}", id);
+                            }
+                        }
                         Write { id, data } => {
                             if let Some(s) = out.get(&id) {
                                 let b = gst::Buffer::from_slice(data);
@@ -108,6 +137,6 @@ impl GstAudio {
                 Err(e) => eprintln!("Audio thread error: {}", e),
             }
         });
-        Ok(Self { thread })
+        Ok(Self { out_thread })
     }
 }

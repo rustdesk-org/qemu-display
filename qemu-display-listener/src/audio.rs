@@ -21,10 +21,17 @@ pub struct PCMInfo {
 }
 
 #[derive(Debug)]
+pub struct Volume {
+    pub mute: bool,
+    pub volume: Vec<u8>,
+}
+
+#[derive(Debug)]
 pub enum AudioOutEvent {
     Init { id: u64, info: PCMInfo },
     Fini { id: u64 },
     SetEnabled { id: u64, enabled: bool },
+    SetVolume { id: u64, volume: Volume },
     Write { id: u64, data: Vec<u8> },
 }
 
@@ -33,6 +40,7 @@ pub enum AudioInEvent {
     Init { id: u64, info: PCMInfo },
     Fini { id: u64 },
     SetEnabled { id: u64, enabled: bool },
+    SetVolume { id: u64, volume: Volume },
     Read { id: u64 },
 }
 
@@ -119,6 +127,17 @@ impl<E: 'static + EventSender<Event = AudioOutEvent>> AudioOutListener<E> {
         self.send(AudioOutEvent::SetEnabled { id, enabled })
     }
 
+    /// SetVolume method
+    fn set_volume(&mut self, id: u64, mute: bool, volume: serde_bytes::ByteBuf) {
+        self.send(AudioOutEvent::SetVolume {
+            id,
+            volume: Volume {
+                mute,
+                volume: volume.into_vec(),
+            },
+        });
+    }
+
     /// Write method
     fn write(&mut self, id: u64, data: serde_bytes::ByteBuf) {
         self.send(AudioOutEvent::Write {
@@ -189,6 +208,17 @@ impl<E: 'static + EventSender<Event = AudioInEvent>> AudioInListener<E> {
     /// SetEnabled method
     fn set_enabled(&mut self, id: u64, enabled: bool) {
         self.send(AudioInEvent::SetEnabled { id, enabled })
+    }
+
+    /// SetVolume method
+    fn set_volume(&mut self, id: u64, mute: bool, volume: serde_bytes::ByteBuf) {
+        self.send(AudioInEvent::SetVolume {
+            id,
+            volume: Volume {
+                mute,
+                volume: volume.into_vec(),
+            },
+        });
     }
 
     /// Read method
