@@ -17,12 +17,10 @@ fn pcminfo_as_caps(info: &PCMInfo) -> String {
         "{}{}{}",
         if info.is_float {
             "F"
+        } else if info.is_signed {
+            "S"
         } else {
-            if info.is_signed {
-                "S"
-            } else {
-                "U"
-            }
+            "U"
         },
         info.bits,
         if info.be { "BE" } else { "LE" }

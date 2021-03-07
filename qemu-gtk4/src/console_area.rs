@@ -98,7 +98,7 @@ mod imp {
             widget.make_current();
 
             if let Err(e) = unsafe { self.realize_gl() } {
-                let e = glib::Error::new(AppError::GL, &e.to_string());
+                let e = glib::Error::new(AppError::GL, &e);
                 widget.set_error(Some(&e));
             }
         }
