@@ -10,4 +10,4 @@ members = [
 [patch.crates-io]
 zbus = { path = '/home/elmarco/src/zbus/zbus' }
 zvariant = { path = '/home/elmarco/src/zbus/zvariant' }
-vnc = { git = 'https://github.com/elmarco/rust-vnc', branch = 'server' }
+vnc = { path = '/home/elmarco/src/rust-vnc' }
