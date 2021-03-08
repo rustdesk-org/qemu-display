@@ -3,7 +3,7 @@ use zbus::dbus_proxy;
 use zvariant::derive::Type;
 
 #[repr(u32)]
-#[derive(Deserialize_repr, Serialize_repr, Type, Debug, PartialEq, Clone, Copy)]
+#[derive(Deserialize_repr, Serialize_repr, Type, Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub enum MouseButton {
     Left,
     Middle,
