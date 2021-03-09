@@ -84,6 +84,16 @@ impl Client {
         self.has_update && self.req_update
     }
 
+    fn key_event(&self, qnum: u32, down: bool) -> Result<(), Box<dyn Error>> {
+        let inner = self.server.inner.lock().unwrap();
+        if down {
+            inner.console.keyboard.press(qnum)?;
+        } else {
+            inner.console.keyboard.release(qnum)?;
+        }
+        Ok(())
+    }
+
     fn handle_vnc_event(&mut self, event: VncEvent) -> Result<(), Box<dyn Error>> {
         match event {
             VncEvent::FramebufferUpdateRequest { .. } => {
@@ -91,15 +101,16 @@ impl Client {
                 self.send_framebuffer_update()?;
             }
             VncEvent::KeyEvent { key, down } => {
-                let inner = self.server.inner.lock().unwrap();
-
                 if let Some(qnum) = KEYMAP_X112QNUM.get(key as usize) {
-                    if down {
-                        inner.console.keyboard.press(*qnum as u32)?;
-                    } else {
-                        inner.console.keyboard.release(*qnum as u32)?;
-                    }
+                    self.key_event(*qnum as u32, down)?;
                 }
+            }
+            VncEvent::ExtendedKeyEvent {
+                down,
+                keysym: _,
+                keycode,
+            } => {
+                self.key_event(keycode as u32, down)?;
             }
             VncEvent::PointerEvent {
                 button_mask,
@@ -128,11 +139,18 @@ impl Client {
             }
             VncEvent::SetEncodings(e) => {
                 self.encodings = HashSet::from_iter(e);
+                println!("Supported encodings: {:?}", &self.encodings);
+
+                if self.encodings.contains(&Encoding::ExtendedKeyEvent) {
+                    let mut fbu = FramebufferUpdate::new(None);
+                    fbu.add_pseudo_encoding(Encoding::ExtendedKeyEvent);
+                    return Ok(self.vnc_server.send(&fbu)?);
+                }
             }
             VncEvent::SetDesktopSize {
                 width,
                 height,
-                _screens,
+                screens: _,
             } => {
                 let inner = self.server.inner.lock().unwrap();
                 inner
@@ -141,7 +159,6 @@ impl Client {
                     .set_ui_info(0, 0, 0, 0, width as _, height as _)?;
             }
             // VncEvent::CutText(_) => {}
-            // VncEvent::ExtendedKeyEvent { .. } => {}
             e => {
                 dbg!(e);
             }
