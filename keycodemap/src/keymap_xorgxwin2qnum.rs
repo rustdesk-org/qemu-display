@@ -4,7 +4,7 @@
 // To re-generate, run:
 //   keymap-gen code-map --lang=rust --varname=keymap_xorgxwin2qnum keymaps.csv xorgxwin qnum
 //
-pub static KEYMAP_XORGXWIN2QNUM: &'static [u16] = &[
+pub static KEYMAP_XORGXWIN2QNUM: &[u16] = &[
   0, // xorgxwin:0 -> linux:None (unnamed) -> qnum:None
   0, // xorgxwin:1 -> linux:None (unnamed) -> qnum:None
   0, // xorgxwin:2 -> linux:None (unnamed) -> qnum:None

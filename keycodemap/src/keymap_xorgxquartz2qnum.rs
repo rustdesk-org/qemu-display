@@ -4,7 +4,7 @@
 // To re-generate, run:
 //   keymap-gen code-map --lang=rust --varname=keymap_xorgxquartz2qnum keymaps.csv xorgxquartz qnum
 //
-pub static KEYMAP_XORGXQUARTZ2QNUM: &'static [u16] = &[
+pub static KEYMAP_XORGXQUARTZ2QNUM: &[u16] = &[
   0, // xorgxquartz:0 -> linux:None (unnamed) -> qnum:None
   0, // xorgxquartz:1 -> linux:None (unnamed) -> qnum:None
   0, // xorgxquartz:2 -> linux:None (unnamed) -> qnum:None

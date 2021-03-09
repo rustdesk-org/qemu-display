@@ -4,7 +4,7 @@
 // To re-generate, run:
 //   keymap-gen code-map --lang=rust --varname=keymap_xorgkbd2qnum keymaps.csv xorgkbd qnum
 //
-pub static KEYMAP_XORGKBD2QNUM: &'static [u16] = &[
+pub static KEYMAP_XORGKBD2QNUM: &[u16] = &[
   0, // xorgkbd:0 -> linux:None (unnamed) -> qnum:None
   0, // xorgkbd:1 -> linux:None (unnamed) -> qnum:None
   0, // xorgkbd:2 -> linux:None (unnamed) -> qnum:None

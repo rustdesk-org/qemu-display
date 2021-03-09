@@ -4,7 +4,7 @@
 // To re-generate, run:
 //   keymap-gen code-map --lang=rust --varname=keymap_win322qnum keymaps.csv win32 qnum
 //
-pub static KEYMAP_WIN322QNUM: &'static [u16] = &[
+pub static KEYMAP_WIN322QNUM: &[u16] = &[
   0, // win32:0 (unnamed) -> linux:None (unnamed) -> qnum:None
   0, // win32:1 (VK_LBUTTON) -> linux:256 (BTN_0) -> qnum:None
   0, // win32:2 (VK_RBUTTON) -> linux:257 (BTN_1) -> qnum:None

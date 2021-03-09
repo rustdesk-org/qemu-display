@@ -4,7 +4,7 @@
 // To re-generate, run:
 //   keymap-gen code-map --lang=rust --varname=keymap_osx2qnum keymaps.csv osx qnum
 //
-pub static KEYMAP_OSX2QNUM: &'static [u16] = &[
+pub static KEYMAP_OSX2QNUM: &[u16] = &[
   0x1e, // osx:0 (ANSI_A) -> linux:30 (KEY_A) -> qnum:30
   0x1f, // osx:1 (ANSI_S) -> linux:31 (KEY_S) -> qnum:31
   0x20, // osx:2 (ANSI_D) -> linux:32 (KEY_D) -> qnum:32
