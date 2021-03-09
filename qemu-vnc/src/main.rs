@@ -1,3 +1,4 @@
+use std::iter::FromIterator;
 use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -7,11 +8,11 @@ use std::{io, thread, time};
 
 use clap::Clap;
 use image::GenericImage;
-use qemu_display_listener::{Console, ConsoleEvent, MouseButton, VMProxy};
 use keycodemap::*;
+use qemu_display_listener::{Console, ConsoleEvent, MouseButton, VMProxy};
 use vnc::{
-    server::Event as VncEvent, server::FramebufferUpdate, Error as VncError, PixelFormat, Rect,
-    Server as VncServer,
+    server::Event as VncEvent, server::FramebufferUpdate, Encoding, Error as VncError, PixelFormat,
+    Rect, Screen, Server as VncServer,
 };
 use zbus::Connection;
 
@@ -60,6 +61,8 @@ struct Client {
     has_update: bool,
     req_update: bool,
     last_buttons: HashSet<MouseButton>,
+    encodings: HashSet<Encoding>,
+    dimensions: (u16, u16),
 }
 
 impl Client {
@@ -72,6 +75,8 @@ impl Client {
             has_update: false,
             req_update: false,
             last_buttons: HashSet::new(),
+            encodings: HashSet::new(),
+            dimensions: (0, 0),
         }
     }
 
@@ -116,8 +121,25 @@ impl Client {
                     .set_abs_position(x_position as _, y_position as _)?;
                 self.last_buttons = buttons;
             }
-            // VncEvent::SetPixelFormat(_) => {}
-            // VncEvent::SetEncodings(_) => {}
+            VncEvent::SetPixelFormat(p) => {
+                if p != pixman_xrgb() {
+                    todo!("Unsupported client requested format: {:?}", p);
+                }
+            }
+            VncEvent::SetEncodings(e) => {
+                self.encodings = HashSet::from_iter(e);
+            }
+            VncEvent::SetDesktopSize {
+                width,
+                height,
+                _screens,
+            } => {
+                let inner = self.server.inner.lock().unwrap();
+                inner
+                    .console
+                    .proxy
+                    .set_ui_info(0, 0, 0, 0, width as _, height as _)?;
+            }
             // VncEvent::CutText(_) => {}
             // VncEvent::ExtendedKeyEvent { .. } => {}
             e => {
@@ -127,7 +149,36 @@ impl Client {
         Ok(())
     }
 
+    fn desktop_resize(&mut self) -> Result<(), Box<dyn Error>> {
+        let (width, height) = self.server.dimensions();
+        if (width, height) == self.dimensions {
+            return Ok(());
+        }
+        self.dimensions = (width, height);
+
+        let mut fbu = FramebufferUpdate::new(None);
+        let screens = &[Screen {
+            id: 0,
+            flags: 0,
+            rect: Rect {
+                left: 0,
+                top: 0,
+                width,
+                height,
+            },
+        }];
+        if self.encodings.contains(&Encoding::ExtendedDesktopSize) {
+            fbu.add_extended_desktop_size(2, 0, width, height, screens);
+        } else if self.encodings.contains(&Encoding::DesktopSize) {
+            fbu.add_desktop_size(width, height);
+        } else {
+            return Ok(());
+        }
+        Ok(self.vnc_server.send(&fbu)?)
+    }
+
     fn send_framebuffer_update(&mut self) -> Result<(), Box<dyn Error>> {
+        self.desktop_resize()?;
         if self.has_update && self.req_update {
             if let Some(last_update) = self.last_update {
                 if last_update.elapsed().as_millis() < 10 {
@@ -263,7 +314,7 @@ impl Server {
 
     fn send_framebuffer_update(&self, server: &VncServer) -> Result<(), Box<dyn Error>> {
         let inner = self.inner.lock().unwrap();
-        let mut fbu = FramebufferUpdate::new(&pixman_xrgb());
+        let mut fbu = FramebufferUpdate::new(Some(&pixman_xrgb()));
         let pixel_data = inner.image.as_raw();
         let rect = Rect {
             left: 0,
@@ -279,13 +330,8 @@ impl Server {
     fn handle_client(&self, stream: TcpStream) -> Result<(), Box<dyn Error>> {
         let (width, height) = self.dimensions();
 
-        let (vnc_server, share) = VncServer::from_tcp_stream(
-            stream,
-            width,
-            height,
-            pixman_xrgb(),
-            self.vm_name.clone(),
-        )?;
+        let (vnc_server, share) =
+            VncServer::from_tcp_stream(stream, width, height, pixman_xrgb(), self.vm_name.clone())?;
 
         let tx = self.inner.lock().unwrap().tx.clone();
         let srv = vnc_server.clone();
@@ -355,7 +401,7 @@ pub fn pixman_xrgb() -> PixelFormat {
     PixelFormat {
         bits_per_pixel: 32,
         depth: 24,
-        big_endian: true,
+        big_endian: false,
         true_colour: true,
         red_max: 255,
         green_max: 255,
@@ -410,7 +456,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let vm_name = VMProxy::new(&dbus)?.name()?;
     let console = Console::new(&dbus, 0).expect("Failed to get the console");
-    let server = Server::new(vm_name, console)?;
+    let server = Server::new(format!("qemu-vnc ({})", vm_name), console)?;
     for stream in listener.incoming() {
         server.handle_client(stream?)?;
     }
