@@ -126,10 +126,13 @@ impl Client {
                 for b in self.last_buttons.difference(&buttons) {
                     inner.console.mouse.release(*b)?;
                 }
-                inner
+                if let Err(err) = inner
                     .console
                     .mouse
-                    .set_abs_position(x_position as _, y_position as _)?;
+                    .set_abs_position(x_position as _, y_position as _)
+                {
+                    eprintln!("Error setting mouse position: {}", err);
+                }
                 self.last_buttons = buttons;
             }
             VncEvent::SetPixelFormat(p) => {
