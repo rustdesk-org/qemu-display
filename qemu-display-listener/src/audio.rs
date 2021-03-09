@@ -3,6 +3,7 @@ use std::os::unix::net::UnixStream;
 use std::sync::mpsc::{self, Receiver, SendError};
 use std::sync::Arc;
 use std::{os::unix::io::AsRawFd, thread};
+use std::str::FromStr;
 
 use zbus::{dbus_interface, dbus_proxy, export::zvariant::Fd};
 
@@ -232,6 +233,14 @@ impl Audio {
     pub fn new(conn: &zbus::Connection) -> Result<Self> {
         let proxy = AudioProxy::new(conn)?;
         Ok(Self { proxy })
+    }
+
+    pub fn available(conn: &zbus::Connection) -> bool {
+        // TODO: we may want to generalize interface detection
+        let ip = zbus::fdo::IntrospectableProxy::new_for(&conn, "org.qemu", "/org/qemu/Display1").unwrap();
+        let introspect = zbus::xml::Node::from_str(&ip.introspect().unwrap()).unwrap();
+        let has_audio = introspect.nodes().iter().any(|n| n.name().map(|n| n == "Audio").unwrap_or(false));
+        has_audio
     }
 
     pub fn listen_out(&self) -> Result<Receiver<AudioOutEvent>> {

@@ -96,11 +96,14 @@ mod imp {
             }
             .expect("Failed to connect to DBus");
 
-            if let Ok(audio) = Audio::new(&conn) {
-                self.audio
-                    .set(GstAudio::new(audio).expect("Failed to setup audio"))
-                    .expect("Audio already set");
+            if Audio::available(&conn) {
+                if let Ok(audio) = Audio::new(&conn) {
+                    self.audio
+                        .set(GstAudio::new(audio).expect("Failed to setup audio"))
+                        .unwrap();
+                }
             }
+
             let console = Console::new(&conn, 0).expect("Failed to get the console");
             self.conn.set(conn).expect("Connection already set.");
 
