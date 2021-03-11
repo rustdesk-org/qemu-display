@@ -5,6 +5,7 @@ use gtk::prelude::*;
 use gtk::{gdk, glib, CompositeTemplate};
 use once_cell::sync::OnceCell;
 use std::cell::Cell;
+use log::debug;
 
 use keycodemap::*;
 use qemu_display_listener::{Console, ConsoleEvent as Event, MouseButton};
@@ -168,6 +169,7 @@ impl QemuConsole {
             None,
             clone!(@weak self as con => move |t| {
                 let priv_ = imp::QemuConsole::from_instance(&con);
+                debug!("Console event: {:?}", t);
                 match t {
                     Event::Scanout(s) => {
                         priv_.area.set_scanout(s);
