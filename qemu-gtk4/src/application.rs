@@ -17,9 +17,8 @@ use zbus::Connection;
 
 mod imp {
     use super::*;
-    use glib::subclass;
 
-    #[derive(Debug)]
+    #[derive(Debug, Default)]
     pub struct QemuApplication {
         pub window: OnceCell<WeakRef<QemuApplicationWindow>>,
         pub conn: OnceCell<Connection>,
@@ -27,24 +26,11 @@ mod imp {
         pub audio: OnceCell<GstAudio>,
     }
 
+    #[glib::object_subclass]
     impl ObjectSubclass for QemuApplication {
         const NAME: &'static str = "QemuApplication";
         type Type = super::QemuApplication;
         type ParentType = gtk::Application;
-        type Interfaces = ();
-        type Instance = subclass::simple::InstanceStruct<Self>;
-        type Class = subclass::simple::ClassStruct<Self>;
-
-        glib::object_subclass!();
-
-        fn new() -> Self {
-            Self {
-                window: OnceCell::new(),
-                conn: OnceCell::new(),
-                addr: OnceCell::new(),
-                audio: OnceCell::new(),
-            }
-        }
     }
 
     impl ObjectImpl for QemuApplication {}

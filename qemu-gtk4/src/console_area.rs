@@ -14,9 +14,9 @@ use qemu_display_listener::{Scanout, ScanoutDMABUF, Update};
 
 mod imp {
     use super::*;
-    use glib::subclass;
     use gtk::subclass::prelude::*;
 
+    #[derive(Default)]
     pub struct QemuConsoleArea {
         pub tex_id: Cell<GLuint>,
         pub texture_blit_vao: Cell<GLuint>,
@@ -26,26 +26,11 @@ mod imp {
         pub scanout_size: Cell<(u32, u32)>,
     }
 
+    #[glib::object_subclass]
     impl ObjectSubclass for QemuConsoleArea {
         const NAME: &'static str = "QemuConsoleArea";
         type Type = super::QemuConsoleArea;
         type ParentType = gtk::GLArea;
-        type Interfaces = ();
-        type Instance = subclass::simple::InstanceStruct<Self>;
-        type Class = subclass::simple::ClassStruct<Self>;
-
-        glib::object_subclass!();
-
-        fn new() -> Self {
-            Self {
-                tex_id: Cell::new(0),
-                texture_blit_vao: Cell::new(0),
-                texture_blit_prog: Cell::new(0),
-                texture_blit_flip_prog: Cell::new(0),
-                scanout: Cell::new(None),
-                scanout_size: Cell::new((0, 0)),
-            }
-        }
 
         fn class_init(_klass: &mut Self::Class) {
             // GL loading could be done earlier?

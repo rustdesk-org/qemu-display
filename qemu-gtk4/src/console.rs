@@ -12,7 +12,6 @@ use qemu_display_listener::{Console, ConsoleEvent as Event, MouseButton};
 
 mod imp {
     use super::*;
-    use glib::subclass;
     use gtk::subclass::prelude::*;
 
     #[derive(Debug, CompositeTemplate, Default)]
@@ -26,25 +25,17 @@ mod imp {
         pub wait_rendering: Cell<usize>,
     }
 
+    #[glib::object_subclass]
     impl ObjectSubclass for QemuConsole {
         const NAME: &'static str = "QemuConsole";
         type Type = super::QemuConsole;
         type ParentType = gtk::Widget;
-        type Interfaces = ();
-        type Instance = subclass::simple::InstanceStruct<Self>;
-        type Class = subclass::simple::ClassStruct<Self>;
-
-        glib::object_subclass!();
-
-        fn new() -> Self {
-            Self::default()
-        }
 
         fn class_init(klass: &mut Self::Class) {
             Self::bind_template(klass);
         }
 
-        fn instance_init(obj: &glib::subclass::InitializingObject<Self::Type>) {
+        fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
             obj.init_template();
         }
     }
@@ -190,7 +181,7 @@ impl QemuConsole {
                         priv_.area.attach_buffers();
                         let _ = unsafe {
                             glib::Object::from_glib_borrow(priv_.area.as_ptr() as *mut glib::gobject_ffi::GObject)
-                                .emit("render", &[&priv_.area.get_context().as_ref()])
+                                .emit_by_name("render", &[&priv_.area.get_context().as_ref()])
                                 .unwrap()
                         };
                         priv_.area.queue_draw();
