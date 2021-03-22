@@ -82,7 +82,7 @@ mod imp {
             widget.make_current();
 
             if let Err(e) = unsafe { self.realize_gl() } {
-                let e = glib::Error::new(AppError::GL, &e);
+                let e = glib::Error::new(QemuGtkError::GL, &e);
                 widget.set_error(Some(&e));
             }
         }
