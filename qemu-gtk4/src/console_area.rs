@@ -1,4 +1,3 @@
-use gdk_wl::WaylandDisplayManualExt;
 use glib::subclass::prelude::*;
 use glib::translate::*;
 use gtk::prelude::*;
