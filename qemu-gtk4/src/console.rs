@@ -201,7 +201,6 @@ impl QemuConsole {
             }),
         );
         priv_.console.set(console).unwrap();
-        priv_.area.grab_focus();
     }
 
     fn qemu_console(&self) -> &Console {
@@ -216,9 +215,6 @@ impl QemuConsole {
             let c = self.qemu_console();
             let _ = c.mouse.set_abs_position(x, y);
         }
-
-        // FIXME: focus on click doesn't work
-        priv_.area.grab_focus();
     }
 }
 
