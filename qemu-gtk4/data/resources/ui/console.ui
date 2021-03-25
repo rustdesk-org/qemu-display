@@ -6,6 +6,7 @@
     </property>
     <child>
       <object class="GtkNotebook">
+        <property name="show-tabs">0</property>
         <child>
           <object class="QemuConsoleArea" id="area"/>
         </child>
