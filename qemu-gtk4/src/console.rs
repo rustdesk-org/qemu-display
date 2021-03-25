@@ -3,9 +3,9 @@ use glib::subclass::prelude::*;
 use gtk::glib::translate::FromGlibPtrBorrow;
 use gtk::prelude::*;
 use gtk::{gdk, glib, CompositeTemplate};
+use log::debug;
 use once_cell::sync::OnceCell;
 use std::cell::Cell;
-use log::debug;
 
 use keycodemap::*;
 use qemu_display_listener::{Console, ConsoleEvent as Event, MouseButton};
@@ -14,7 +14,7 @@ mod imp {
     use super::*;
     use gtk::subclass::prelude::*;
 
-    #[derive(Debug, CompositeTemplate, Default)]
+    #[derive(CompositeTemplate, Default)]
     #[template(resource = "/org/qemu/gtk4/console.ui")]
     pub struct QemuConsole {
         #[template_child]
@@ -23,6 +23,9 @@ mod imp {
         pub label: TemplateChild<gtk::Label>,
         pub console: OnceCell<Console>,
         pub wait_rendering: Cell<usize>,
+        pub shortcuts_inhibited_id: Cell<Option<glib::SignalHandlerId>>,
+        pub ungrab_shortcut: OnceCell<gtk::ShortcutTrigger>,
+        pub key_controller: OnceCell<gtk::EventControllerKey>,
     }
 
     #[glib::object_subclass]
@@ -44,22 +47,29 @@ mod imp {
         fn constructed(&self, obj: &Self::Type) {
             self.parent_constructed(obj);
 
+            // TODO: implement a custom trigger with only modifiers, ala spice-gtk?
+            let ungrab = gtk::ShortcutTrigger::parse_string("<ctrl><alt>g").unwrap();
+            self.ungrab_shortcut.set(ungrab).unwrap();
+
             let ec = gtk::EventControllerKey::new();
             ec.set_propagation_phase(gtk::PropagationPhase::Capture);
             self.area.add_controller(&ec);
-            ec.connect_key_pressed(clone!(@weak obj => move |_, _keyval, keycode, _state| {
-                let c = obj.qemu_console();
-                if let Some(qnum) = KEYMAP_XORGEVDEV2QNUM.get(keycode as usize) {
-                    let _ = c.keyboard.press(*qnum as u32);
-                }
-                glib::signal::Inhibit(true)
-            }));
+            ec.connect_key_pressed(
+                clone!(@weak obj => @default-panic, move |_, _keyval, keycode, _state| {
+                    let c = obj.qemu_console();
+                    if let Some(qnum) = KEYMAP_XORGEVDEV2QNUM.get(keycode as usize) {
+                        let _ = c.keyboard.press(*qnum as u32);
+                    }
+                    glib::signal::Inhibit(true)
+                }),
+            );
             ec.connect_key_released(clone!(@weak obj => move |_, _keyval, keycode, _state| {
                 let c = obj.qemu_console();
                 if let Some(qnum) = KEYMAP_XORGEVDEV2QNUM.get(keycode as usize) {
                     let _ = c.keyboard.release(*qnum as u32);
                 }
             }));
+            self.key_controller.set(ec).unwrap();
 
             let ec = gtk::EventControllerMotion::new();
             self.area.add_controller(&ec);
@@ -70,11 +80,59 @@ mod imp {
             let ec = gtk::GestureClick::new();
             ec.set_button(0);
             self.area.add_controller(&ec);
-            ec.connect_pressed(clone!(@weak obj => move |gesture, _n_press, x, y| {
+            ec.connect_pressed(clone!(@weak obj => @default-panic, move |gesture, _n_press, x, y| {
                 let c = obj.qemu_console();
                 let button = from_gdk_button(gesture.get_current_button());
                 obj.motion(x, y);
                 let _ = c.mouse.press(button);
+
+                let priv_ = imp::QemuConsole::from_instance(&obj);
+                if let Some(toplevel) = obj.get_toplevel() {
+                    if !toplevel.get_property_shortcuts_inhibited() {
+                        toplevel.inhibit_system_shortcuts::<gdk::ButtonEvent>(None);
+
+                        let ec = gtk::EventControllerKey::new();
+                        ec.set_propagation_phase(gtk::PropagationPhase::Capture);
+                        ec.connect_key_pressed(clone!(@weak obj => @default-panic, move |ec, keyval, keycode, state| {
+                            let priv_ = imp::QemuConsole::from_instance(&obj);
+                            if let Some(ref e) = ec.get_current_event() {
+                                if priv_.ungrab_shortcut.get().unwrap().trigger(e, false) == gdk::KeyMatch::Exact {
+                                    //widget.remove_controller(ec); here crashes badly
+                                    glib::idle_add_local(clone!(@weak ec => @default-panic, move || {
+                                        if let Some(widget) = ec.get_widget() {
+                                            widget.remove_controller(&ec);
+                                        }
+                                        glib::Continue(false)
+                                    }));
+                                } else {
+                                    priv_.key_controller.get().unwrap().emit_by_name("key-pressed", &[&*keyval, &keycode, &state]).unwrap();
+                                }
+                            }
+
+                            glib::signal::Inhibit(true)
+                        }));
+                        ec.connect_key_released(clone!(@weak obj => @default-panic, move |_ec, keyval, keycode, state| {
+                            let priv_ = imp::QemuConsole::from_instance(&obj);
+                            priv_.key_controller.get().unwrap().emit_by_name("key-released", &[&*keyval, &keycode, &state]).unwrap();
+                        }));
+                        if let Some(root) = priv_.area.get_root() {
+                            root.add_controller(&ec);
+                        }
+
+                        let id = toplevel.connect_property_shortcuts_inhibited_notify(clone!(@weak obj => @default-panic, move |toplevel| {
+                            let inhibited = toplevel.get_property_shortcuts_inhibited();
+                            debug!("shortcuts-inhibited: {}", inhibited);
+                            if !inhibited {
+                                let priv_ = imp::QemuConsole::from_instance(&obj);
+                                let id = priv_.shortcuts_inhibited_id.take();
+                                toplevel.disconnect(id.unwrap());
+                            }
+                        }));
+                        priv_.shortcuts_inhibited_id.set(Some(id));
+                    }
+                }
+
+                priv_.area.grab_focus();
             }));
             ec.connect_released(clone!(@weak obj => move |gesture, _n_press, x, y| {
                 let c = obj.qemu_console();
@@ -85,7 +143,7 @@ mod imp {
 
             let ec = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
             self.area.add_controller(&ec);
-            ec.connect_scroll(clone!(@weak obj => move |_, _dx, dy| {
+            ec.connect_scroll(clone!(@weak obj => @default-panic, move |_, _dx, dy| {
                 let c = obj.qemu_console();
 
                 let button = if dy >= 1.0 {
@@ -145,7 +203,7 @@ impl QemuConsole {
             .expect("Failed to listen to the console");
         priv_
             .area
-            .connect_render(clone!(@weak self as obj => move |_, _| {
+            .connect_render(clone!(@weak self as obj => @default-panic, move |_, _| {
                 let priv_ = imp::QemuConsole::from_instance(&obj);
                 let wait_rendering = priv_.wait_rendering.get();
                 if wait_rendering > 0 {
@@ -158,7 +216,7 @@ impl QemuConsole {
             }));
         rx.attach(
             None,
-            clone!(@weak self as con => move |t| {
+            clone!(@weak self as con => @default-panic, move |t| {
                 let priv_ = imp::QemuConsole::from_instance(&con);
                 debug!("Console event: {:?}", t);
                 match t {
@@ -195,12 +253,22 @@ impl QemuConsole {
                         let cur = gdk::Cursor::from_texture(&tex, hot_x, hot_y, None);
                         priv_.area.set_cursor(Some(&cur));
                     }
-                    t => { dbg!(t); }
+                    _t => { }
                 }
                 Continue(true)
             }),
         );
         priv_.console.set(console).unwrap();
+    }
+
+    fn get_toplevel(&self) -> Option<gdk::Toplevel> {
+        let priv_ = imp::QemuConsole::from_instance(self);
+        priv_
+            .area
+            .get_root()
+            .and_then(|r| r.get_native())
+            .and_then(|n| n.get_surface())
+            .and_then(|s| s.downcast::<gdk::Toplevel>().ok())
     }
 
     fn qemu_console(&self) -> &Console {
