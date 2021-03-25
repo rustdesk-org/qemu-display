@@ -94,15 +94,16 @@ mod imp {
 
                         let ec = gtk::EventControllerKey::new();
                         ec.set_propagation_phase(gtk::PropagationPhase::Capture);
-                        ec.connect_key_pressed(clone!(@weak obj => @default-panic, move |ec, keyval, keycode, state| {
+                        ec.connect_key_pressed(clone!(@weak obj, @weak toplevel => @default-panic, move |ec, keyval, keycode, state| {
                             let priv_ = imp::QemuConsole::from_instance(&obj);
                             if let Some(ref e) = ec.get_current_event() {
                                 if priv_.ungrab_shortcut.get().unwrap().trigger(e, false) == gdk::KeyMatch::Exact {
                                     //widget.remove_controller(ec); here crashes badly
-                                    glib::idle_add_local(clone!(@weak ec => @default-panic, move || {
+                                    glib::idle_add_local(clone!(@weak ec, @weak toplevel => @default-panic, move || {
                                         if let Some(widget) = ec.get_widget() {
                                             widget.remove_controller(&ec);
                                         }
+                                        toplevel.restore_system_shortcuts();
                                         glib::Continue(false)
                                     }));
                                 } else {
