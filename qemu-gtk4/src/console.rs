@@ -279,9 +279,11 @@ mod imp {
                             priv_.label.set_label("Console disconnected!");
                         }
                         Event::CursorDefine { width, height, hot_x, hot_y, data }=> {
-                            let bytes = glib::Bytes::from(&data);
-                            let tex = gdk::MemoryTexture::new(width, height, gdk::MemoryFormat::B8g8r8a8, &bytes, width as usize * 4);
-                            let cur = gdk::Cursor::from_texture(&tex, hot_x, hot_y, None);
+                            let scale = priv_.area.get_scale_factor();
+                            let pb = gdk::gdk_pixbuf::Pixbuf::from_mut_slice(data, gdk::gdk_pixbuf::Colorspace::Rgb, true, 8, width, height, width * 4);
+                            let pb = pb.scale_simple(width * scale, height * scale, gdk::gdk_pixbuf::InterpType::Bilinear).unwrap();
+                            let tex = gdk::Texture::new_for_pixbuf(&pb);
+                            let cur = gdk::Cursor::from_texture(&tex, hot_x * scale, hot_y * scale, None);
                             priv_.area.set_cursor(Some(&cur));
                         }
                         _t => { }
