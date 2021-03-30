@@ -101,7 +101,7 @@ mod imp {
             if !self.cursor_abs.get() {
                 if let Some(mouse) = self.mouse.get() {
                     if mouse.on != 0 {
-                        if let Some(cursor) = self.cursor.borrow().clone() {
+                        if let Some(cursor) = &*self.cursor.borrow() {
                             if let Some(texture) = cursor.get_texture() {
                                 let sf = widget.get_scale_factor();
                                 snapshot.append_texture(

@@ -5,7 +5,17 @@ use gtk::prelude::*;
 use gtk::{gdk, glib, CompositeTemplate};
 use log::debug;
 use once_cell::sync::OnceCell;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+
+use wayland_client::{Display, GlobalManager};
+use wayland_protocols::unstable::pointer_constraints::v1::client::zwp_locked_pointer_v1::ZwpLockedPointerV1;
+use wayland_protocols::unstable::pointer_constraints::v1::client::zwp_pointer_constraints_v1::{
+    Lifetime, ZwpPointerConstraintsV1,
+};
+use wayland_protocols::unstable::relative_pointer::v1::client::zwp_relative_pointer_manager_v1::ZwpRelativePointerManagerV1;
+use wayland_protocols::unstable::relative_pointer::v1::client::zwp_relative_pointer_v1::{
+    Event as RelEvent, ZwpRelativePointerV1,
+};
 
 use keycodemap::*;
 use qemu_display_listener::{Console, ConsoleEvent as Event, MouseButton};
@@ -26,6 +36,12 @@ mod imp {
         pub shortcuts_inhibited_id: Cell<Option<glib::SignalHandlerId>>,
         pub ungrab_shortcut: OnceCell<gtk::ShortcutTrigger>,
         pub key_controller: OnceCell<gtk::EventControllerKey>,
+        pub event_queue: OnceCell<wayland_client::EventQueue>,
+        pub rel_manager: OnceCell<wayland_client::Main<ZwpRelativePointerManagerV1>>,
+        pub rel_pointer: RefCell<Option<wayland_client::Main<ZwpRelativePointerV1>>>,
+        pub pointer_constraints: OnceCell<wayland_client::Main<ZwpPointerConstraintsV1>>,
+        pub lock_pointer: RefCell<Option<wayland_client::Main<ZwpLockedPointerV1>>>,
+        pub has_grab: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -76,13 +92,9 @@ mod imp {
             ec.connect_motion(clone!(@weak obj => move |_, x, y| {
                 let priv_ = imp::QemuConsole::from_instance(&obj);
                 let c = obj.qemu_console();
-                if let Ok(abs) = c.mouse.is_absolute() {
-                    if abs {
-                        priv_.motion(x, y);
-                    } else {
-                        dbg!()
-                    }
-                }
+                if c.mouse.is_absolute().unwrap_or(true) {
+                    priv_.motion(x, y);
+                };
             }));
 
             let ec = gtk::GestureClick::new();
@@ -95,6 +107,43 @@ mod imp {
                 priv_.motion(x, y);
                 let _ = c.mouse.press(button);
 
+                if !c.mouse.is_absolute().unwrap_or(true) {
+                    priv_.area.set_cursor_abs(false);
+                    if let Some(device) = gesture.get_device() {
+                        if let Ok(device) = device.downcast::<gdk_wl::WaylandDevice>() {
+                            let pointer = device.get_wl_pointer();
+                            if priv_.lock_pointer.borrow().is_none() {
+                                if let Some(constraints) = priv_.pointer_constraints.get() {
+                                    if let Some(surf) = priv_.area.get_native()
+                                                                  .and_then(|n| n.get_surface())
+                                                                  .and_then(|s| s.downcast::<gdk_wl::WaylandSurface>().ok())
+                                                                  .map(|w| w.get_wl_surface()) {
+                                        let lock = constraints.lock_pointer(&surf, &pointer, None, Lifetime::Persistent as _);
+                                        lock.quick_assign(move |_, event, _| {
+                                            debug!("{:?}", event);
+                                        });
+                                        priv_.lock_pointer.replace(Some(lock));
+                                    }
+                                }
+                            }
+                            if priv_.rel_pointer.borrow().is_none() {
+                                if let Some(rel_manager) = priv_.rel_manager.get() {
+                                    let rel_pointer = rel_manager.get_relative_pointer(&pointer);
+                                    rel_pointer.quick_assign(clone!(@weak obj => @default-panic, move |_, event, _| {
+                                        if let RelEvent::RelativeMotion { dx_unaccel, dy_unaccel, .. } = event {
+                                            let priv_ = imp::QemuConsole::from_instance(&obj);
+                                            let c = obj.qemu_console();
+                                            let scale = priv_.area.get_scale_factor();
+                                            let _ = c.mouse.rel_motion(dx_unaccel as i32 / scale, dy_unaccel as i32 / scale);
+                                        }
+                                    }));
+                                    priv_.rel_pointer.replace(Some(rel_pointer));
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if let Some(toplevel) = priv_.get_toplevel() {
                     if !toplevel.get_property_shortcuts_inhibited() {
                         toplevel.inhibit_system_shortcuts::<gdk::ButtonEvent>(None);
@@ -106,11 +155,20 @@ mod imp {
                             if let Some(ref e) = ec.get_current_event() {
                                 if priv_.ungrab_shortcut.get().unwrap().trigger(e, false) == gdk::KeyMatch::Exact {
                                     //widget.remove_controller(ec); here crashes badly
-                                    glib::idle_add_local(clone!(@weak ec, @weak toplevel => @default-panic, move || {
+                                    glib::idle_add_local(clone!(@weak ec, @weak toplevel, @weak obj => @default-panic, move || {
+                                        let priv_ = imp::QemuConsole::from_instance(&obj);
                                         if let Some(widget) = ec.get_widget() {
                                             widget.remove_controller(&ec);
                                         }
                                         toplevel.restore_system_shortcuts();
+                                        if let Some(lock) = priv_.lock_pointer.take() {
+                                            lock.destroy();
+                                        }
+                                        if let Some(rel_pointer) = priv_.rel_pointer.take() {
+                                            rel_pointer.destroy();
+                                        }
+                                        priv_.area.set_cursor_abs(true);
+                                        priv_.has_grab.set(false);
                                         glib::Continue(false)
                                     }));
                                 } else {
@@ -141,6 +199,7 @@ mod imp {
                     }
                 }
 
+                priv_.has_grab.set(true);
                 priv_.area.grab_focus();
             }));
             ec.connect_released(clone!(@weak obj => move |gesture, _n_press, x, y| {
@@ -210,7 +269,38 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for QemuConsole {}
+    impl WidgetImpl for QemuConsole {
+        fn realize(&self, widget: &Self::Type) {
+            self.parent_realize(widget);
+
+            if let Ok(dpy) = widget.get_display().downcast::<gdk_wl::WaylandDisplay>() {
+                let display = unsafe {
+                    Display::from_external_display(dpy.get_wl_display().as_ref().c_ptr() as *mut _)
+                };
+                let mut event_queue = display.create_event_queue();
+                let attached_display = display.attach(event_queue.token());
+                let globals = GlobalManager::new(&attached_display);
+                event_queue
+                    .sync_roundtrip(&mut (), |_, _, _| unreachable!())
+                    .unwrap();
+                let rel_manager = globals
+                    .instantiate_exact::<ZwpRelativePointerManagerV1>(1)
+                    .unwrap();
+                self.rel_manager.set(rel_manager).unwrap();
+                let pointer_constraints = globals
+                    .instantiate_exact::<ZwpPointerConstraintsV1>(1)
+                    .unwrap();
+                self.pointer_constraints.set(pointer_constraints).unwrap();
+                let fd = display.get_connection_fd();
+                let _ = glib::unix_fd_add_local(fd, glib::IOCondition::IN, move |_, _| {
+                    event_queue
+                        .sync_roundtrip(&mut (), |_, _, _| unreachable!())
+                        .unwrap();
+                    glib::Continue(true)
+                });
+            }
+        }
+    }
 
     impl QemuConsole {
         fn get_toplevel(&self) -> Option<gdk::Toplevel> {
@@ -296,7 +386,8 @@ mod imp {
                         Event::MouseSet(m) => {
                             priv_.area.mouse_set(m);
                             let c = obj.qemu_console();
-                            if let Ok(abs) = c.mouse.is_absolute() {
+                            let abs = c.mouse.is_absolute().unwrap_or(true);
+                            if priv_.has_grab.get() {
                                 priv_.area.set_cursor_abs(abs);
                             }
                             priv_.area.queue_render();

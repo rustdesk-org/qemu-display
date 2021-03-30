@@ -21,6 +21,8 @@ derivative = "2.2.0"
 gst = { package = "gstreamer", version = "0.16.7" }
 gst-app = { package = "gstreamer-app", version = "0.16.5" }
 gst-audio = { package = "gstreamer-audio", version = "0.16.5" }
+wayland-protocols = { version = "0.28.5", features = ["unstable_protocols", "client"] }
+wayland-client = "0.28.5"
 
 [dependencies.gtk]
 package = "gtk4"
