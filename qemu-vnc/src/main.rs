@@ -316,7 +316,7 @@ impl Server {
                     inner.tx.send(Event::ConsoleUpdate(rect)).unwrap();
                 }
                 ConsoleEvent::CursorDefine { .. } => {}
-                ConsoleEvent::MouseSet { .. } => {}
+                ConsoleEvent::MouseSet(_) => {}
                 e => {
                     dbg!(e);
                 }

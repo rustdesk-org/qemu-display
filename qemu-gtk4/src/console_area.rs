@@ -2,14 +2,14 @@ use glib::subclass::prelude::*;
 use glib::translate::*;
 use gtk::prelude::*;
 use gtk::subclass::widget::WidgetImplExt;
-use gtk::{gdk, glib};
-use std::cell::Cell;
+use gtk::{gdk, glib, graphene};
+use std::cell::{Cell, RefCell};
 use std::ffi::{CStr, CString};
 
 use crate::egl;
 use crate::error::*;
 use gl::{self, types::*};
-use qemu_display_listener::{Scanout, ScanoutDMABUF, Update};
+use qemu_display_listener::{MouseSet, Scanout, ScanoutDMABUF, Update};
 
 mod imp {
     use super::*;
@@ -23,6 +23,9 @@ mod imp {
         pub texture_blit_flip_prog: Cell<GLuint>,
         pub scanout: Cell<Option<ScanoutDMABUF>>,
         pub scanout_size: Cell<(u32, u32)>,
+        pub cursor_abs: Cell<bool>,
+        pub cursor: RefCell<Option<gdk::Cursor>>,
+        pub mouse: Cell<Option<MouseSet>>,
     }
 
     #[glib::object_subclass]
@@ -91,6 +94,31 @@ mod imp {
             self.parent_size_allocate(widget, width, height, baseline);
             widget.notify("resize-hack");
         }
+
+        fn snapshot(&self, widget: &Self::Type, snapshot: &gtk::Snapshot) {
+            self.parent_snapshot(widget, snapshot);
+
+            if !self.cursor_abs.get() {
+                if let Some(mouse) = self.mouse.get() {
+                    if mouse.on != 0 {
+                        if let Some(cursor) = self.cursor.borrow().clone() {
+                            if let Some(texture) = cursor.get_texture() {
+                                let sf = widget.get_scale_factor();
+                                snapshot.append_texture(
+                                    &texture,
+                                    &graphene::Rect::new(
+                                        (mouse.x - cursor.get_hotspot_x() / sf) as f32,
+                                        (mouse.y - cursor.get_hotspot_y() / sf) as f32,
+                                        (texture.get_width() / sf) as f32,
+                                        (texture.get_height() / sf) as f32,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     impl GLAreaImpl for QemuConsoleArea {
@@ -104,6 +132,7 @@ mod imp {
                 gl::Viewport(vp.x, vp.y, vp.width, vp.height);
                 self.texture_blit(false);
             }
+
             // parent will return to update call
             false
         }
@@ -382,6 +411,30 @@ impl QemuConsoleArea {
         let x = (x - vp.x) as f64 * (sw as f64 / vp.width as f64);
         let y = (y - vp.y) as f64 * (sh as f64 / vp.height as f64);
         Some((x as u32, y as u32))
+    }
+
+    pub fn set_cursor_abs(&self, abs: bool) {
+        let priv_ = imp::QemuConsoleArea::from_instance(self);
+
+        priv_.cursor_abs.set(abs);
+        if abs {
+            if let Some(cursor) = priv_.cursor.borrow().clone() {
+                self.set_cursor(Some(&cursor));
+            }
+        } else {
+            self.set_cursor_from_name(Some("none"))
+        }
+        self.queue_render();
+    }
+
+    pub fn cursor_define(&self, cursor: gdk::Cursor) {
+        let priv_ = imp::QemuConsoleArea::from_instance(self);
+        priv_.cursor.replace(Some(cursor));
+    }
+
+    pub fn mouse_set(&self, mouse: MouseSet) {
+        let priv_ = imp::QemuConsoleArea::from_instance(self);
+        priv_.mouse.set(Some(mouse));
     }
 }
 

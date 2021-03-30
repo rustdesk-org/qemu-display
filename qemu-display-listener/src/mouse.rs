@@ -24,4 +24,7 @@ pub trait Mouse {
 
     /// SetAbsPosition method
     fn set_abs_position(&self, x: u32, y: u32) -> zbus::Result<()>;
+
+    #[dbus_proxy(property)]
+    fn is_absolute(&self) -> zbus::Result<bool>;
 }

@@ -75,7 +75,14 @@ mod imp {
             self.area.add_controller(&ec);
             ec.connect_motion(clone!(@weak obj => move |_, x, y| {
                 let priv_ = imp::QemuConsole::from_instance(&obj);
-                priv_.motion(x, y);
+                let c = obj.qemu_console();
+                if let Ok(abs) = c.mouse.is_absolute() {
+                    if abs {
+                        priv_.motion(x, y);
+                    } else {
+                        dbg!()
+                    }
+                }
             }));
 
             let ec = gtk::GestureClick::new();
@@ -284,9 +291,16 @@ mod imp {
                             let pb = pb.scale_simple(width * scale, height * scale, gdk::gdk_pixbuf::InterpType::Bilinear).unwrap();
                             let tex = gdk::Texture::new_for_pixbuf(&pb);
                             let cur = gdk::Cursor::from_texture(&tex, hot_x * scale, hot_y * scale, None);
-                            priv_.area.set_cursor(Some(&cur));
+                            priv_.area.cursor_define(cur);
                         }
-                        _t => { }
+                        Event::MouseSet(m) => {
+                            priv_.area.mouse_set(m);
+                            let c = obj.qemu_console();
+                            if let Ok(abs) = c.mouse.is_absolute() {
+                                priv_.area.set_cursor_abs(abs);
+                            }
+                            priv_.area.queue_render();
+                        }
                     }
                     Continue(true)
                 }),

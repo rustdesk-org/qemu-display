@@ -54,6 +54,13 @@ impl Drop for ScanoutDMABUF {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct MouseSet {
+    pub x: i32,
+    pub y: i32,
+    pub on: i32,
+}
+
 // TODO: replace events mpsc with async traits
 #[derive(Debug)]
 pub enum ConsoleEvent {
@@ -66,11 +73,7 @@ pub enum ConsoleEvent {
         w: i32,
         h: i32,
     },
-    MouseSet {
-        x: i32,
-        y: i32,
-        on: i32,
-    },
+    MouseSet(MouseSet),
     CursorDefine {
         width: i32,
         height: i32,
@@ -160,7 +163,7 @@ impl<E: 'static + EventSender<Event = ConsoleEvent>> ConsoleListener<E> {
     }
 
     fn mouse_set(&mut self, x: i32, y: i32, on: i32) {
-        self.send(ConsoleEvent::MouseSet { x, y, on })
+        self.send(ConsoleEvent::MouseSet(MouseSet { x, y, on }))
     }
 
     fn cursor_define(&mut self, width: i32, height: i32, hot_x: i32, hot_y: i32, data: Vec<u8>) {
