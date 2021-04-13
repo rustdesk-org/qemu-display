@@ -1,4 +1,2 @@
-paths = ['../gtk4-rs/gtk4']
-
 [alias]
 xtask = "run --package xtask --"

@@ -1,6 +1,0 @@
-data/resources/ui/shortcuts.ui
-data/resources/ui/console.ui.in
-data/resources/ui/window.ui.in
-data/org.qemu.gtk4.desktop.in.in
-data/org.qemu.gtk4.gschema.xml.in
-data/org.qemu.gtk4.metainfo.xml.in.in

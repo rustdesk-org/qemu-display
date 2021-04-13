@@ -2,7 +2,6 @@
 members = [
     "keycodemap",
     "qemu-display-listener",
-    "qemu-gtk4",
     "qemu-vnc",
     "xtask",
 ]
