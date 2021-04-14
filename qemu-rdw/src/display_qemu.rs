@@ -150,8 +150,19 @@ mod imp {
                     log::debug!("Console event: {:?}", evt);
                     match evt {
                         Scanout(s) => {
+                            if s.format != 0x20020888 {
+                                log::warn!("Format not yet supported: {:X}", s.format);
+                                return Continue(true);
+                            }
+                            widget.set_display_size(Some((s.width as _, s.height as _)));
+                            widget.update_area(0, 0, s.width as _, s.height as _, s.stride as _, &s.data);
                         }
                         Update(u) => {
+                            if u.format != 0x20020888 {
+                                log::warn!("Format not yet supported: {:X}", u.format);
+                                return Continue(true);
+                            }
+                            widget.update_area(u.x as _, u.y as _, u.w as _, u.h as _, u.stride as _, &u.data);
                         }
                         ScanoutDMABUF(s) => {
                             widget.set_display_size(Some((s.width as _, s.height as _)));
