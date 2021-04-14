@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::ops::Drop;
+use std::os::unix::io::IntoRawFd;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::mpsc::{Receiver, RecvError, SendError};
 use std::sync::Arc;
@@ -51,6 +52,12 @@ impl Drop for ScanoutDMABUF {
                 libc::close(self.fd);
             }
         }
+    }
+}
+
+impl IntoRawFd for ScanoutDMABUF {
+    fn into_raw_fd(mut self) -> RawFd {
+        std::mem::replace(&mut self.fd, -1)
     }
 }
 

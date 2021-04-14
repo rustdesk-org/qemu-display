@@ -2,9 +2,12 @@
 members = [
     "keycodemap",
     "qemu-display-listener",
+    "qemu-rdw",
     "qemu-vnc",
     "xtask",
 ]
+
+default-members = ["qemu-rdw"]
 
 [patch.crates-io]
 zbus = { git = 'https://gitlab.freedesktop.org/dbus/zbus.git' }
