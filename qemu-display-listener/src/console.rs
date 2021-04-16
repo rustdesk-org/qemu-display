@@ -5,7 +5,7 @@ use std::{os::unix::io::AsRawFd, thread};
 use zbus::{dbus_proxy, export::zvariant::Fd};
 
 use crate::Result;
-use crate::{ConsoleEvent, ConsoleListener, KeyboardProxy, MouseProxy};
+use crate::{ConsoleEvent, ConsoleListener, AsyncKeyboardProxy, AsyncMouseProxy};
 
 #[dbus_proxy(default_service = "org.qemu", interface = "org.qemu.Display1.Console")]
 pub trait Console {
@@ -44,19 +44,19 @@ pub trait Console {
 #[derivative(Debug)]
 pub struct Console {
     #[derivative(Debug = "ignore")]
-    pub proxy: ConsoleProxy<'static>,
+    pub proxy: AsyncConsoleProxy<'static>,
     #[derivative(Debug = "ignore")]
-    pub keyboard: KeyboardProxy<'static>,
+    pub keyboard: AsyncKeyboardProxy<'static>,
     #[derivative(Debug = "ignore")]
-    pub mouse: MouseProxy<'static>,
+    pub mouse: AsyncMouseProxy<'static>,
 }
 
 impl Console {
-    pub fn new(conn: &zbus::Connection, idx: u32) -> Result<Self> {
+    pub async fn new(conn: &zbus::azync::Connection, idx: u32) -> Result<Self> {
         let obj_path = format!("/org/qemu/Display1/Console_{}", idx);
-        let proxy = ConsoleProxy::new_for_owned_path(conn.clone(), obj_path.clone())?;
-        let keyboard = KeyboardProxy::new_for_owned_path(conn.clone(), obj_path.clone())?;
-        let mouse = MouseProxy::new_for_owned_path(conn.clone(), obj_path)?;
+        let proxy = AsyncConsoleProxy::new_for_owned_path(conn.clone(), obj_path.clone())?;
+        let keyboard = AsyncKeyboardProxy::new_for_owned_path(conn.clone(), obj_path.clone())?;
+        let mouse = AsyncMouseProxy::new_for_owned_path(conn.clone(), obj_path)?;
         Ok(Self {
             proxy,
             keyboard,
@@ -64,22 +64,22 @@ impl Console {
         })
     }
 
-    pub fn label(&self) -> Result<String> {
-        Ok(self.proxy.label()?)
+    pub async fn label(&self) -> Result<String> {
+        Ok(self.proxy.label().await?)
     }
 
-    pub fn width(&self) -> Result<u32> {
-        Ok(self.proxy.width()?)
+    pub async fn width(&self) -> Result<u32> {
+        Ok(self.proxy.width().await?)
     }
 
-    pub fn height(&self) -> Result<u32> {
-        Ok(self.proxy.height()?)
+    pub async fn height(&self) -> Result<u32> {
+        Ok(self.proxy.height().await?)
     }
 
-    pub fn listen(&self) -> Result<(Receiver<ConsoleEvent>, Sender<()>)> {
+    pub async fn listen(&self) -> Result<(Receiver<ConsoleEvent>, Sender<()>)> {
         let (p0, p1) = UnixStream::pair()?;
         let (tx, rx) = mpsc::channel();
-        self.proxy.register_listener(p0.as_raw_fd().into())?;
+        self.proxy.register_listener(p0.as_raw_fd().into()).await?;
 
         let (wait_tx, wait_rx) = mpsc::channel();
         let _thread = thread::spawn(move || {
@@ -106,10 +106,10 @@ impl Console {
 
 #[cfg(feature = "glib")]
 impl Console {
-    pub fn glib_listen(&self) -> Result<(glib::Receiver<ConsoleEvent>, Sender<()>)> {
+    pub async fn glib_listen(&self) -> Result<(glib::Receiver<ConsoleEvent>, Sender<()>)> {
         let (p0, p1) = UnixStream::pair()?;
         let (tx, rx) = glib::MainContext::channel(glib::source::Priority::default());
-        self.proxy.register_listener(p0.as_raw_fd().into())?;
+        self.proxy.register_listener(p0.as_raw_fd().into()).await?;
 
         let (wait_tx, wait_rx) = mpsc::channel();
         let _thread = thread::spawn(move || {
