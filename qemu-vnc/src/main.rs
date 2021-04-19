@@ -84,17 +84,17 @@ impl Client {
         self.has_update && self.req_update
     }
 
-    fn key_event(&self, qnum: u32, down: bool) -> Result<(), Box<dyn Error>> {
+    async fn key_event(&self, qnum: u32, down: bool) -> Result<(), Box<dyn Error>> {
         let inner = self.server.inner.lock().unwrap();
         if down {
-            inner.console.keyboard.press(qnum)?;
+            inner.console.keyboard.press(qnum).await?;
         } else {
-            inner.console.keyboard.release(qnum)?;
+            inner.console.keyboard.release(qnum).await?;
         }
         Ok(())
     }
 
-    fn handle_vnc_event(&mut self, event: VncEvent) -> Result<(), Box<dyn Error>> {
+    async fn handle_vnc_event(&mut self, event: VncEvent) -> Result<(), Box<dyn Error>> {
         match event {
             VncEvent::FramebufferUpdateRequest { .. } => {
                 self.req_update = true;
@@ -102,7 +102,7 @@ impl Client {
             }
             VncEvent::KeyEvent { key, down } => {
                 if let Some(qnum) = KEYMAP_X112QNUM.get(key as usize) {
-                    self.key_event(*qnum as u32, down)?;
+                    self.key_event(*qnum as u32, down).await?;
                 }
             }
             VncEvent::ExtendedKeyEvent {
@@ -110,7 +110,7 @@ impl Client {
                 keysym: _,
                 keycode,
             } => {
-                self.key_event(keycode as u32, down)?;
+                self.key_event(keycode as u32, down).await?;
             }
             VncEvent::PointerEvent {
                 button_mask,
@@ -121,15 +121,16 @@ impl Client {
                 let inner = self.server.inner.lock().unwrap();
 
                 for b in buttons.difference(&self.last_buttons) {
-                    inner.console.mouse.press(*b)?;
+                    inner.console.mouse.press(*b).await?;
                 }
                 for b in self.last_buttons.difference(&buttons) {
-                    inner.console.mouse.release(*b)?;
+                    inner.console.mouse.release(*b).await?;
                 }
                 if let Err(err) = inner
                     .console
                     .mouse
                     .set_abs_position(x_position as _, y_position as _)
+                    .await
                 {
                     eprintln!("Error setting mouse position: {}", err);
                 }
@@ -159,7 +160,8 @@ impl Client {
                 inner
                     .console
                     .proxy
-                    .set_ui_info(0, 0, 0, 0, width as _, height as _)?;
+                    .set_ui_info(0, 0, 0, 0, width as _, height as _)
+                    .await?;
             }
             // VncEvent::CutText(_) => {}
             e => {
@@ -213,9 +215,9 @@ impl Client {
         Ok(())
     }
 
-    fn handle_event(&mut self, event: Option<Event>) -> Result<bool, Box<dyn Error>> {
+    async fn handle_event(&mut self, event: Option<Event>) -> Result<bool, Box<dyn Error>> {
         match event {
-            Some(Event::Vnc(e)) => self.handle_vnc_event(e)?,
+            Some(Event::Vnc(e)) => self.handle_vnc_event(e).await?,
             Some(Event::ConsoleUpdate(_)) => {
                 self.has_update = true;
             }
@@ -247,8 +249,9 @@ struct Server {
 }
 
 impl Server {
-    fn new(vm_name: String, console: Console) -> Result<Self, Box<dyn Error>> {
-        let (width, height) = (console.width()?, console.height()?);
+    async fn new(vm_name: String, console: Console) -> Result<Self, Box<dyn Error>> {
+        let width = console.width().await?;
+        let height = console.height().await?;
         let image = BgraImage::new(width as _, height as _);
         let (tx, rx) = mpsc::channel();
         Ok(Self {
@@ -272,14 +275,14 @@ impl Server {
         Ok(())
     }
 
-    fn run_console(&self) -> Result<(), Box<dyn Error>> {
+    async fn run_console(&self) -> Result<(), Box<dyn Error>> {
         let mut inner = self.inner.lock().unwrap();
         if inner.console_thread.is_some() {
             return Ok(());
         }
 
         let server = self.clone();
-        let (console_rx, _ack) = inner.console.listen()?;
+        let (console_rx, _ack) = inner.console.listen().await?;
 
         let thread = thread::spawn(move || loop {
             match console_rx.recv().unwrap() {
@@ -347,7 +350,7 @@ impl Server {
         Ok(())
     }
 
-    fn handle_client(&self, stream: TcpStream) -> Result<(), Box<dyn Error>> {
+    async fn handle_client(&self, stream: TcpStream) -> Result<(), Box<dyn Error>> {
         let (width, height) = self.dimensions();
 
         let (vnc_server, share) =
@@ -374,7 +377,7 @@ impl Server {
         });
 
         let mut client = Client::new(self.clone(), vnc_server, share);
-        self.run_console()?;
+        self.run_console().await?;
         let rx = self.rx.lock().unwrap();
         loop {
             let ev = if client.update_pending() {
@@ -388,7 +391,7 @@ impl Server {
             } else {
                 Some(rx.recv()?)
             };
-            if !client.handle_event(ev)? {
+            if !client.handle_event(ev).await? {
                 break;
             }
         }
@@ -463,7 +466,7 @@ fn image_from_vec(format: u32, width: u32, height: u32, stride: u32, data: Vec<u
         .unwrap()
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+async fn run() -> Result<(), Box<dyn Error>> {
     let args = Cli::parse();
 
     let listener = TcpListener::bind::<std::net::SocketAddr>(args.address.into()).unwrap();
@@ -475,11 +478,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     .expect("Failed to connect to DBus");
 
     let vm_name = VMProxy::new(&dbus)?.name()?;
-    let console = Console::new(&dbus, 0).expect("Failed to get the console");
-    let server = Server::new(format!("qemu-vnc ({})", vm_name), console)?;
+
+    let console = Console::new(&dbus.into(), 0)
+        .await
+        .expect("Failed to get the console");
+    let server = Server::new(format!("qemu-vnc ({})", vm_name), console).await?;
     for stream in listener.incoming() {
-        server.handle_client(stream?)?;
+        server.handle_client(stream?).await?;
     }
 
     Ok(())
+}
+
+fn main() {
+    async_io::block_on(run()).unwrap();
 }
