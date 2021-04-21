@@ -7,6 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+log = "0.4"
 derivative = "2.2.0"
 zbus = { version = "2.0.0-beta", features = ["xml"] }
 zvariant = { version = "2.4.0", features = ["serde_bytes"] }
@@ -16,3 +17,4 @@ enumflags2 = { version = "0.6.4", features = ["serde"] }
 serde = { version = "1.0.123", features = ["derive"] }
 serde_repr = "0.1.6"
 serde_bytes = "0.11.5"
+futures-util = { version = "0.3.8", features = ["async-await-macro"] }

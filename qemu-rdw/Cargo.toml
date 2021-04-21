@@ -15,3 +15,4 @@ qemu-display-listener = { path = "../qemu-display-listener", features = ["glib"]
 keycodemap = { path = "../keycodemap" }
 gtk = { package = "gtk4", git = "https://github.com/gtk-rs/gtk4-rs" }
 rdw = { git = "https://gitlab.gnome.org/malureau/rdw.git" }
+futures-util = "0.3.13"

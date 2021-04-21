@@ -54,14 +54,42 @@ pub struct Console {
 impl Console {
     pub async fn new(conn: &zbus::azync::Connection, idx: u32) -> Result<Self> {
         let obj_path = format!("/org/qemu/Display1/Console_{}", idx);
-        let proxy = AsyncConsoleProxy::new_for_owned_path(conn.clone(), obj_path.clone())?;
-        let keyboard = AsyncKeyboardProxy::new_for_owned_path(conn.clone(), obj_path.clone())?;
-        let mouse = AsyncMouseProxy::new_for_owned_path(conn.clone(), obj_path)?;
+        let mut proxy = AsyncConsoleProxy::new_for_owned_path(conn.clone(), obj_path.clone())?;
+        proxy.cache_properties().await;
+        let mut keyboard = AsyncKeyboardProxy::new_for_owned_path(conn.clone(), obj_path.clone())?;
+        keyboard.cache_properties().await;
+        let mut mouse = AsyncMouseProxy::new_for_owned_path(conn.clone(), obj_path)?;
+        mouse.cache_properties().await;
         Ok(Self {
             proxy,
             keyboard,
             mouse,
         })
+    }
+
+    pub async fn dispatch_signals(&self) -> Result<()> {
+        use futures_util::{future::FutureExt, select};
+
+        select!(
+            msg = self.proxy.next_signal().fuse() => {
+                if let Some(msg) = msg? {
+                    log::debug!("Ignoring {:?}", msg);
+                }
+                return Ok(());
+            },
+            msg = self.keyboard.next_signal().fuse() => {
+                if let Some(msg) = msg? {
+                    log::debug!("Ignoring {:?}", msg);
+                }
+                return Ok(());
+            },
+            msg = self.mouse.next_signal().fuse() => {
+                if let Some(msg) = msg? {
+                    log::debug!("Ignoring {:?}", msg);
+                }
+                return Ok(());
+            }
+        );
     }
 
     pub async fn label(&self) -> Result<String> {

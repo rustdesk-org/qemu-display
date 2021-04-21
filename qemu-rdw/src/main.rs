@@ -1,4 +1,3 @@
-use std::error::Error;
 use gio::ApplicationFlags;
 use glib::{clone, MainContext};
 use gtk::{gio, glib, prelude::*};
@@ -12,7 +11,9 @@ fn main() {
 
     let app = gtk::Application::new(Some("org.qemu.rdw.demo"), ApplicationFlags::NON_UNIQUE);
 
-    let conn: zbus::azync::Connection = Connection::new_session().expect("Failed to connect to DBus").into();
+    let conn: zbus::azync::Connection = Connection::new_session()
+        .expect("Failed to connect to DBus")
+        .into();
 
     app.connect_activate(move |app| {
         let window = gtk::ApplicationWindow::new(app);

@@ -1,4 +1,4 @@
-use glib::{clone, subclass::prelude::*, translate::*, MainContext};
+use glib::{clone, subclass::prelude::*, MainContext};
 use gtk::{glib, prelude::*};
 use once_cell::sync::OnceCell;
 
@@ -8,8 +8,9 @@ use rdw::DisplayExt;
 
 mod imp {
     use super::*;
+    use futures_util::future::FutureExt;
     use gtk::subclass::prelude::*;
-    use std::os::unix::io::IntoRawFd;
+    use std::{convert::TryInto, os::unix::io::IntoRawFd};
 
     #[repr(C)]
     pub struct RdwDisplayQemuClass {
@@ -140,6 +141,7 @@ mod imp {
             MainContext::default().spawn_local(clone!(@weak widget => async move {
                 let self_ = Self::from_instance(&widget);
                 let console = self_.console.get().unwrap();
+
                 let (rx, wait_tx) = console
                     .glib_listen()
                     .await
@@ -206,6 +208,19 @@ mod imp {
                         Continue(true)
                     })
                 );
+
+                console.mouse.connect_is_absolute_changed(clone!(@strong widget => @default-panic, move |v| {
+                    widget.set_mouse_absolute(v.map_or(true, |v| v.try_into().unwrap_or(true)));
+                    async move {
+                    }.boxed()
+                })).await.unwrap();
+
+                loop {
+                    if let Err(e) = console.dispatch_signals().await {
+                        log::warn!("Console dispatching error: {}", e);
+                        break;
+                    }
+                }
             }));
         }
     }
