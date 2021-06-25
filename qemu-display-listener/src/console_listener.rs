@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use once_cell::sync::OnceCell;
 use std::ops::Drop;
 use std::os::unix::io::IntoRawFd;
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -95,7 +95,7 @@ pub enum ConsoleEvent {
 pub(crate) struct ConsoleListener<E: EventSender<Event = ConsoleEvent>> {
     tx: E,
     wait_rx: Receiver<()>,
-    err: Arc<RefCell<Option<SendError<ConsoleEvent>>>>,
+    err: Arc<OnceCell<SendError<ConsoleEvent>>>,
 }
 
 #[dbus_interface(name = "org.qemu.Display1.Listener")]
@@ -186,13 +186,16 @@ impl<E: 'static + EventSender<Event = ConsoleEvent>> ConsoleListener<E> {
 
 impl<E: EventSender<Event = ConsoleEvent>> ConsoleListener<E> {
     pub(crate) fn new(tx: E, wait_rx: Receiver<()>) -> Self {
-        let err = Arc::new(RefCell::new(None));
-        ConsoleListener { tx, wait_rx, err }
+        ConsoleListener {
+            tx,
+            wait_rx,
+            err: Default::default(),
+        }
     }
 
     fn send(&mut self, event: ConsoleEvent) {
         if let Err(e) = self.tx.send_event(event) {
-            *self.err.borrow_mut() = Some(e);
+            let _ = self.err.set(e);
         }
     }
 
@@ -200,7 +203,7 @@ impl<E: EventSender<Event = ConsoleEvent>> ConsoleListener<E> {
         self.wait_rx.recv()
     }
 
-    pub fn err(&self) -> Arc<RefCell<Option<SendError<ConsoleEvent>>>> {
+    pub fn err(&self) -> Arc<OnceCell<SendError<ConsoleEvent>>> {
         self.err.clone()
     }
 }

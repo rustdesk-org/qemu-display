@@ -13,3 +13,6 @@ default-members = ["qemu-rdw"]
 zbus = { git = 'https://gitlab.freedesktop.org/elmarco/zbus.git', branch = 'proxy-prop' }
 zvariant = { git = 'https://gitlab.freedesktop.org/elmarco/zbus.git', branch = 'proxy-prop' }
 vnc = { git = 'https://github.com/elmarco/rust-vnc', branch = 'server' }
+
+[patch."https://gitlab.gnome.org/malureau/rdw.git"]
+rdw = { path = '/home/elmarco/src/rdw/rdw' }

@@ -1,4 +1,5 @@
-use std::cell::RefCell;
+use once_cell::sync::OnceCell;
+use std::default::Default;
 use std::os::unix::net::UnixStream;
 use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, SendError};
@@ -68,22 +69,24 @@ pub struct Audio {
 #[derive(Debug)]
 pub(crate) struct AudioOutListener<E: EventSender<Event = AudioOutEvent>> {
     tx: E,
-    err: Arc<RefCell<Option<SendError<AudioOutEvent>>>>,
+    err: Arc<OnceCell<SendError<AudioOutEvent>>>,
 }
 
 impl<E: EventSender<Event = AudioOutEvent>> AudioOutListener<E> {
     pub(crate) fn new(tx: E) -> Self {
-        let err = Arc::new(RefCell::new(None));
-        AudioOutListener { tx, err }
+        AudioOutListener {
+            tx,
+            err: Default::default(),
+        }
     }
 
     fn send(&mut self, event: AudioOutEvent) {
         if let Err(e) = self.tx.send_event(event) {
-            *self.err.borrow_mut() = Some(e);
+            let _ = self.err.set(e);
         }
     }
 
-    pub fn err(&self) -> Arc<RefCell<Option<SendError<AudioOutEvent>>>> {
+    pub fn err(&self) -> Arc<OnceCell<SendError<AudioOutEvent>>> {
         self.err.clone()
     }
 }
@@ -151,22 +154,24 @@ impl<E: 'static + EventSender<Event = AudioOutEvent>> AudioOutListener<E> {
 #[derive(Debug)]
 pub(crate) struct AudioInListener<E: EventSender<Event = AudioInEvent>> {
     tx: E,
-    err: Arc<RefCell<Option<SendError<AudioInEvent>>>>,
+    err: Arc<OnceCell<SendError<AudioInEvent>>>,
 }
 
 impl<E: EventSender<Event = AudioInEvent>> AudioInListener<E> {
     pub(crate) fn new(tx: E) -> Self {
-        let err = Arc::new(RefCell::new(None));
-        AudioInListener { tx, err }
+        AudioInListener {
+            tx,
+            err: Default::default(),
+        }
     }
 
     fn send(&mut self, event: AudioInEvent) {
         if let Err(e) = self.tx.send_event(event) {
-            *self.err.borrow_mut() = Some(e);
+            let _ = self.err.set(e);
         }
     }
 
-    pub fn err(&self) -> Arc<RefCell<Option<SendError<AudioInEvent>>>> {
+    pub fn err(&self) -> Arc<OnceCell<SendError<AudioInEvent>>> {
         self.err.clone()
     }
 }
@@ -237,7 +242,11 @@ impl Audio {
 
     pub fn available(conn: &zbus::Connection) -> bool {
         // TODO: we may want to generalize interface detection
-        let ip = zbus::fdo::IntrospectableProxy::new_for(&conn, "org.qemu", "/org/qemu/Display1")
+        let ip = zbus::fdo::IntrospectableProxy::builder(conn)
+            .destination("org.qemu")
+            .path("/org/qemu/Display1")
+            .unwrap()
+            .build()
             .unwrap();
         let introspect = zbus::xml::Node::from_str(&ip.introspect().unwrap()).unwrap();
         let has_audio = introspect
@@ -264,7 +273,7 @@ impl Audio {
                     eprintln!("Listener DBus error: {}", e);
                     return;
                 }
-                if let Some(e) = &*err.borrow() {
+                if let Some(e) = err.get() {
                     eprintln!("Listener channel error: {}", e);
                     return;
                 }
@@ -291,7 +300,7 @@ impl Audio {
                     eprintln!("Listener DBus error: {}", e);
                     return;
                 }
-                if let Some(e) = &*err.borrow() {
+                if let Some(e) = err.get() {
                     eprintln!("Listener channel error: {}", e);
                     return;
                 }

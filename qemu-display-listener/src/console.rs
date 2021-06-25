@@ -1,11 +1,15 @@
+use std::convert::TryFrom;
 use std::os::unix::net::UnixStream;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::{os::unix::io::AsRawFd, thread};
 
-use zbus::{dbus_proxy, export::zvariant::Fd};
+use zbus::{
+    dbus_proxy,
+    export::zvariant::{Fd, ObjectPath},
+};
 
 use crate::Result;
-use crate::{ConsoleEvent, ConsoleListener, AsyncKeyboardProxy, AsyncMouseProxy};
+use crate::{AsyncKeyboardProxy, AsyncMouseProxy, ConsoleEvent, ConsoleListener};
 
 #[dbus_proxy(default_service = "org.qemu", interface = "org.qemu.Display1.Console")]
 pub trait Console {
@@ -53,13 +57,19 @@ pub struct Console {
 
 impl Console {
     pub async fn new(conn: &zbus::azync::Connection, idx: u32) -> Result<Self> {
-        let obj_path = format!("/org/qemu/Display1/Console_{}", idx);
-        let mut proxy = AsyncConsoleProxy::new_for_owned_path(conn.clone(), obj_path.clone())?;
-        proxy.cache_properties().await;
-        let mut keyboard = AsyncKeyboardProxy::new_for_owned_path(conn.clone(), obj_path.clone())?;
-        keyboard.cache_properties().await;
-        let mut mouse = AsyncMouseProxy::new_for_owned_path(conn.clone(), obj_path)?;
-        mouse.cache_properties().await;
+        let obj_path = ObjectPath::try_from(format!("/org/qemu/Display1/Console_{}", idx))?;
+        let proxy = AsyncConsoleProxy::builder(conn)
+            .path(&obj_path)?
+            .build_async()
+            .await?;
+        let keyboard = AsyncKeyboardProxy::builder(conn)
+            .path(&obj_path)?
+            .build_async()
+            .await?;
+        let mouse = AsyncMouseProxy::builder(conn)
+            .path(&obj_path)?
+            .build_async()
+            .await?;
         Ok(Self {
             proxy,
             keyboard,
@@ -121,7 +131,7 @@ impl Console {
                     eprintln!("Listener DBus error: {}", e);
                     return;
                 }
-                if let Some(e) = &*err.borrow() {
+                if let Some(e) = err.get() {
                     eprintln!("Listener channel error: {}", e);
                     return;
                 }
@@ -151,7 +161,7 @@ impl Console {
                     eprintln!("Listener DBus error: {}", e);
                     break;
                 }
-                if let Some(e) = &*err.borrow() {
+                if let Some(e) = err.get() {
                     eprintln!("Listener channel error: {}", e);
                     break;
                 }

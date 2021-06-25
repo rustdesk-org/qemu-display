@@ -58,20 +58,16 @@ mod imp {
 
             obj.set_mouse_absolute(true);
 
-            obj.connect_key_press(clone!(@weak obj => move |_, keyval, keycode| {
-                log::debug!("key-press: {:?}", (keyval, keycode));
+            obj.connect_key_event(clone!(@weak obj => move |_, keyval, keycode, event| {
+                log::debug!("key-event: {:?}", (keyval, keycode, event));
                 if let Some(qnum) = KEYMAP_XORGEVDEV2QNUM.get(keycode as usize) {
                     MainContext::default().spawn_local(clone!(@weak obj => async move {
-                        let _ = obj.console().keyboard.press(*qnum as u32).await;
-                    }));
-                }
-            }));
-
-            obj.connect_key_release(clone!(@weak obj => move |_, keyval, keycode| {
-                log::debug!("key-release: {:?}", (keyval, keycode));
-                if let Some(qnum) = KEYMAP_XORGEVDEV2QNUM.get(keycode as usize) {
-                    MainContext::default().spawn_local(clone!(@weak obj => async move {
-                        let _ = obj.console().keyboard.release(*qnum as u32).await;
+                        if event.contains(rdw::KeyEvent::PRESS) {
+                            let _ = obj.console().keyboard.press(*qnum as u32).await;
+                        }
+                        if event.contains(rdw::KeyEvent::RELEASE) {
+                            let _ = obj.console().keyboard.release(*qnum as u32).await;
+                        }
                     }));
                 }
             }));
@@ -209,11 +205,11 @@ mod imp {
                     })
                 );
 
-                console.mouse.connect_is_absolute_changed(clone!(@strong widget => @default-panic, move |v| {
-                    widget.set_mouse_absolute(v.map_or(true, |v| v.try_into().unwrap_or(true)));
-                    async move {
-                    }.boxed()
-                })).await.unwrap();
+                // console.mouse.connect_is_absolute_changed(clone!(@strong widget => @default-panic, move |v| {
+                //     widget.set_mouse_absolute(v.map_or(true, |v| v.try_into().unwrap_or(true)));
+                //     async move {
+                //     }.boxed()
+                // })).await.unwrap();
 
                 loop {
                     if let Err(e) = console.dispatch_signals().await {
