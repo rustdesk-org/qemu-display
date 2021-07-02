@@ -85,21 +85,21 @@ impl Console {
                 if let Some(msg) = msg? {
                     log::debug!("Ignoring {:?}", msg);
                 }
-                return Ok(());
+                Ok(())
             },
             msg = self.keyboard.next_signal().fuse() => {
                 if let Some(msg) = msg? {
                     log::debug!("Ignoring {:?}", msg);
                 }
-                return Ok(());
+                Ok(())
             },
             msg = self.mouse.next_signal().fuse() => {
                 if let Some(msg) = msg? {
                     log::debug!("Ignoring {:?}", msg);
                 }
-                return Ok(());
+                Ok(())
             }
-        );
+        )
     }
 
     pub async fn label(&self) -> Result<String> {
