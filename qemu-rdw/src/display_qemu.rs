@@ -8,7 +8,6 @@ use rdw::DisplayExt;
 
 mod imp {
     use super::*;
-    use futures_util::future::FutureExt;
     use gtk::subclass::prelude::*;
     use std::{convert::TryInto, os::unix::io::IntoRawFd};
 
@@ -205,11 +204,20 @@ mod imp {
                     })
                 );
 
-                // console.mouse.connect_is_absolute_changed(clone!(@strong widget => @default-panic, move |v| {
-                //     widget.set_mouse_absolute(v.map_or(true, |v| v.try_into().unwrap_or(true)));
-                //     async move {
-                //     }.boxed()
-                // })).await.unwrap();
+                let mut abs_changed = console.mouse.receive_is_absolute_changed().await;
+                MainContext::default().spawn_local(clone!(@weak widget => async move {
+                    use futures_util::StreamExt;
+
+                    while let Some(abs) = abs_changed.next().await {
+                        dbg!(&abs);
+                        let abs = if let Some(abs) = abs {
+                            abs.try_into().unwrap_or(false)
+                        } else {
+                            continue;
+                        };
+                        widget.set_mouse_absolute(abs);
+                    }
+                }));
 
                 loop {
                     if let Err(e) = console.dispatch_signals().await {
