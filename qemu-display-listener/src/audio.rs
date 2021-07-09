@@ -22,6 +22,29 @@ pub struct PCMInfo {
     pub be: bool,
 }
 
+impl PCMInfo {
+    pub fn gst_caps(&self) -> String {
+        let format = format!(
+            "{}{}{}",
+            if self.is_float {
+                "F"
+            } else if self.is_signed {
+                "S"
+            } else {
+                "U"
+            },
+            self.bits,
+            if self.be { "BE" } else { "LE" }
+        );
+        format!(
+            "audio/x-raw,format={format},channels={channels},rate={rate},layout=interleaved",
+            format = format,
+            channels = self.nchannels,
+            rate = self.freq,
+        )
+    }
+}
+
 #[derive(Debug)]
 pub struct Volume {
     pub mute: bool,
@@ -63,7 +86,7 @@ trait Audio {
 #[derivative(Debug)]
 pub struct Audio {
     #[derivative(Debug = "ignore")]
-    pub proxy: AudioProxy<'static>,
+    pub proxy: AsyncAudioProxy<'static>,
 }
 
 #[derive(Debug)]
@@ -235,20 +258,21 @@ impl<E: 'static + EventSender<Event = AudioInEvent>> AudioInListener<E> {
 }
 
 impl Audio {
-    pub fn new(conn: &zbus::Connection) -> Result<Self> {
-        let proxy = AudioProxy::new(conn)?;
+    pub async fn new(conn: &zbus::azync::Connection) -> Result<Self> {
+        let proxy = AsyncAudioProxy::new(conn).await?;
         Ok(Self { proxy })
     }
 
-    pub fn available(conn: &zbus::Connection) -> bool {
+    pub async fn available(conn: &zbus::azync::Connection) -> bool {
         // TODO: we may want to generalize interface detection
-        let ip = zbus::fdo::IntrospectableProxy::builder(conn)
+        let ip = zbus::fdo::AsyncIntrospectableProxy::builder(conn)
             .destination("org.qemu")
             .path("/org/qemu/Display1")
             .unwrap()
-            .build()
+            .build_async()
+            .await
             .unwrap();
-        let introspect = zbus::xml::Node::from_str(&ip.introspect().unwrap()).unwrap();
+        let introspect = zbus::xml::Node::from_str(&ip.introspect().await.unwrap()).unwrap();
         let has_audio = introspect
             .nodes()
             .iter()
@@ -256,10 +280,12 @@ impl Audio {
         has_audio
     }
 
-    pub fn listen_out(&self) -> Result<Receiver<AudioOutEvent>> {
+    pub async fn listen_out(&self) -> Result<Receiver<AudioOutEvent>> {
         let (p0, p1) = UnixStream::pair()?;
         let (tx, rx) = mpsc::channel();
-        self.proxy.register_out_listener(p0.as_raw_fd().into())?;
+        self.proxy
+            .register_out_listener(p0.as_raw_fd().into())
+            .await?;
 
         let _thread = thread::spawn(move || {
             let c = zbus::Connection::new_unix_client(p1, false).unwrap();
@@ -283,10 +309,12 @@ impl Audio {
         Ok(rx)
     }
 
-    pub fn listen_in(&self) -> Result<Receiver<AudioInEvent>> {
+    pub async fn listen_in(&self) -> Result<Receiver<AudioInEvent>> {
         let (p0, p1) = UnixStream::pair()?;
         let (tx, rx) = mpsc::channel();
-        self.proxy.register_in_listener(p0.as_raw_fd().into())?;
+        self.proxy
+            .register_in_listener(p0.as_raw_fd().into())
+            .await?;
 
         let _thread = thread::spawn(move || {
             let c = zbus::Connection::new_unix_client(p1, false).unwrap();
