@@ -16,3 +16,8 @@ vnc = { git = 'https://github.com/elmarco/rust-vnc', branch = 'server' }
 
 [patch."https://gitlab.gnome.org/malureau/rdw.git"]
 rdw = { path = '/home/elmarco/src/rdw/rdw' }
+
+[patch."https://github.com/gtk-rs/gtk4-rs"]
+gdk4-wayland = { path = '/home/elmarco/src/gtk4-rs/gdk4-wayland' }
+gdk4-x11 = { path = '/home/elmarco/src/gtk4-rs/gdk4-x11' }
+gtk4 = { path = '/home/elmarco/src/gtk4-rs/gtk4' }
