@@ -80,26 +80,22 @@ impl Console {
     pub async fn dispatch_signals(&self) -> Result<()> {
         use futures_util::{future::FutureExt, select};
 
-        select!(
+        if let Some(msg) = select!(
             msg = self.proxy.next_signal().fuse() => {
-                if let Some(msg) = msg? {
-                    log::debug!("Ignoring {:?}", msg);
-                }
-                Ok(())
+                msg?
             },
             msg = self.keyboard.next_signal().fuse() => {
-                if let Some(msg) = msg? {
-                    log::debug!("Ignoring {:?}", msg);
-                }
-                Ok(())
+                msg?
             },
             msg = self.mouse.next_signal().fuse() => {
-                if let Some(msg) = msg? {
-                    log::debug!("Ignoring {:?}", msg);
-                }
-                Ok(())
+                msg?
             }
-        )
+        ) {
+            if msg.primary_header().msg_type() == zbus::MessageType::Signal {
+                log::debug!("Ignoring {:?}", msg);
+            }
+        }
+        Ok(())
     }
 
     pub async fn label(&self) -> Result<String> {
