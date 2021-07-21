@@ -6,6 +6,7 @@ use qemu_display_listener::Console;
 use zbus::Connection;
 
 mod audio;
+mod clipboard;
 mod display_qemu;
 
 fn main() {
@@ -18,6 +19,7 @@ fn main() {
         .into();
 
     let audio = std::sync::Arc::new(OnceCell::new());
+    let clipboard = std::sync::Arc::new(OnceCell::new());
 
     app.connect_activate(move |app| {
         let window = gtk::ApplicationWindow::new(app);
@@ -27,6 +29,7 @@ fn main() {
 
         let conn = conn.clone();
         let audio_clone = audio.clone();
+        let clipboard_clone = clipboard.clone();
         MainContext::default().spawn_local(clone!(@strong window => async move {
             let console = Console::new(&conn, 0).await.expect("Failed to get the QEMU console");
             let display = display_qemu::DisplayQemu::new(console);
@@ -35,6 +38,11 @@ fn main() {
             match audio::Handler::new(&conn).await {
                 Ok(handler) => audio_clone.set(handler).unwrap(),
                 Err(e) => log::warn!("Failed to setup audio: {}", e),
+            }
+
+            match clipboard::Handler::new(&conn).await {
+                Ok(handler) => clipboard_clone.set(handler).unwrap(),
+                Err(e) => log::warn!("Failed to setup clipboard: {}", e),
             }
 
             window.show();

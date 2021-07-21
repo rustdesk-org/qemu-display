@@ -7,6 +7,7 @@ pub enum Error {
     Io(io::Error),
     Zbus(zbus::Error),
     Zvariant(zvariant::Error),
+    Failed(String),
 }
 
 impl fmt::Display for Error {
@@ -15,6 +16,7 @@ impl fmt::Display for Error {
             Error::Io(e) => write!(f, "{}", e),
             Error::Zbus(e) => write!(f, "{}", e),
             Error::Zvariant(e) => write!(f, "{}", e),
+            Error::Failed(e) => write!(f, "{}", e),
         }
     }
 }
@@ -25,6 +27,7 @@ impl error::Error for Error {
             Error::Io(e) => Some(e),
             Error::Zbus(e) => Some(e),
             Error::Zvariant(e) => Some(e),
+            Error::Failed(_) => None,
         }
     }
 }
