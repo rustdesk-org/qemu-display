@@ -2,7 +2,9 @@ use gio::ApplicationFlags;
 use glib::{clone, MainContext};
 use gtk::{gio, glib, prelude::*};
 use once_cell::sync::OnceCell;
-use qemu_display_listener::Console;
+use qemu_display_listener::{Chardev, Console};
+use std::os::unix::io::AsRawFd;
+use std::os::unix::net::UnixStream;
 use zbus::Connection;
 
 mod audio;
@@ -43,6 +45,22 @@ fn main() {
             match clipboard::Handler::new(&conn).await {
                 Ok(handler) => clipboard_clone.set(handler).unwrap(),
                 Err(e) => log::warn!("Failed to setup clipboard: {}", e),
+            }
+
+            if let Ok(c) = Chardev::new(&conn, "qmp").await {
+                use std::io::BufReader;
+                use std::io::prelude::*;
+
+                let (p0, p1) = UnixStream::pair().unwrap();
+                if c.proxy.register(p1.as_raw_fd().into()).await.is_ok() {
+                    let mut reader = BufReader::new(p0.try_clone().unwrap());
+                    let mut line = String::new();
+                    std::thread::spawn(move || loop {
+                        if reader.read_line(&mut line).unwrap() > 0 {
+                            println!("{}", &line);
+                        }
+                    });
+                }
             }
 
             window.show();

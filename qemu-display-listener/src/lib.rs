@@ -12,6 +12,9 @@ pub use vm::*;
 mod audio;
 pub use audio::*;
 
+mod chardev;
+pub use chardev::*;
+
 mod clipboard;
 pub use clipboard::*;
 
