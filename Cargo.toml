@@ -4,6 +4,7 @@ members = [
     "qemu-display-listener",
     "qemu-rdw",
     "qemu-vnc",
+    "qemu-vte",
     "xtask",
 ]
 
@@ -21,3 +22,4 @@ rdw = { path = '/home/elmarco/src/rdw/rdw' }
 gdk4-wayland = { path = '/home/elmarco/src/gtk4-rs/gdk4-wayland' }
 gdk4-x11 = { path = '/home/elmarco/src/gtk4-rs/gdk4-x11' }
 gtk4 = { path = '/home/elmarco/src/gtk4-rs/gtk4' }
+gtk4-sys = { path = '/home/elmarco/src/gtk4-rs/gtk4/sys' }
