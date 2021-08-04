@@ -1,11 +1,11 @@
+use futures::prelude::*;
 use glib::{clone, MainContext};
 use qemu_display_listener::Chardev;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 use vte::prelude::*;
-use vte::{glib, gtk, gio};
+use vte::{gio, glib, gtk};
 use zbus::azync::Connection;
-use futures::prelude::*;
 
 fn main() {
     pretty_env_logger::init();
@@ -23,17 +23,20 @@ fn main() {
 
         MainContext::default().spawn_local(clone!(@strong window => async move {
             let conn = Connection::new_session().await
-                .expect("Failed to connect to DBus")
-                .into();
+                .expect("Failed to connect to DBus");
 
             if let Ok(c) = Chardev::new(&conn, "serial").await {
                 let (p0, p1) = UnixStream::pair().unwrap();
                 if c.proxy.register(p1.as_raw_fd().into()).await.is_ok() {
                     log::info!("ok");
+                    let ostream = unsafe { gio::UnixOutputStream::with_fd(p0.as_raw_fd()) };
                     let istream = unsafe { gio::UnixInputStream::take_fd(p0) }
                         .dynamic_cast::<gio::PollableInputStream>()
                         .unwrap();
                     let mut read = istream.into_async_read().unwrap();
+                    term.connect_commit(move |_, text, _| {
+                        let _res = ostream.write(text.as_bytes(), gio::NONE_CANCELLABLE); // TODO cancellable and error
+                    });
                     loop {
                         let mut buffer = [0u8; 8192];
                         match read.read(&mut buffer[..]).await {
