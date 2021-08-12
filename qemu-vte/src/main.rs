@@ -22,7 +22,7 @@ fn main() {
         window.set_child(Some(&term));
 
         MainContext::default().spawn_local(clone!(@strong window => async move {
-            let conn = Connection::new_session().await
+            let conn = Connection::session().await
                 .expect("Failed to connect to DBus");
 
             if let Ok(c) = Chardev::new(&conn, "serial").await {

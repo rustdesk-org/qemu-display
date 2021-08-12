@@ -6,7 +6,7 @@ use std::sync::mpsc::{self, Receiver, SendError};
 use std::sync::Arc;
 use std::{os::unix::io::AsRawFd, thread};
 
-use zbus::{dbus_interface, dbus_proxy, export::zvariant::Fd};
+use zbus::{dbus_interface, dbus_proxy, zvariant::Fd};
 
 use crate::{EventSender, Result};
 
@@ -267,9 +267,10 @@ impl Audio {
         // TODO: we may want to generalize interface detection
         let ip = zbus::fdo::AsyncIntrospectableProxy::builder(conn)
             .destination("org.qemu")
+            .unwrap()
             .path("/org/qemu/Display1")
             .unwrap()
-            .build_async()
+            .build()
             .await
             .unwrap();
         let introspect = zbus::xml::Node::from_str(&ip.introspect().await.unwrap()).unwrap();
@@ -288,7 +289,10 @@ impl Audio {
             .await?;
 
         let _thread = thread::spawn(move || {
-            let c = zbus::Connection::new_unix_client(p1, false).unwrap();
+            let c = zbus::ConnectionBuilder::unix_stream(p1)
+                .p2p()
+                .build()
+                .unwrap();
             let mut s = zbus::ObjectServer::new(&c);
             let listener = AudioOutListener::new(tx);
             let err = listener.err();
@@ -317,7 +321,10 @@ impl Audio {
             .await?;
 
         let _thread = thread::spawn(move || {
-            let c = zbus::Connection::new_unix_client(p1, false).unwrap();
+            let c = zbus::ConnectionBuilder::unix_stream(p1)
+                .p2p()
+                .build()
+                .unwrap();
             let mut s = zbus::ObjectServer::new(&c);
             let listener = AudioInListener::new(tx);
             let err = listener.err();

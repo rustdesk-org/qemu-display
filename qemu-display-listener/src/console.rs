@@ -5,7 +5,7 @@ use std::{os::unix::io::AsRawFd, thread};
 
 use zbus::{
     dbus_proxy,
-    export::zvariant::{Fd, ObjectPath},
+    zvariant::{Fd, ObjectPath},
 };
 
 use crate::Result;
@@ -60,15 +60,15 @@ impl Console {
         let obj_path = ObjectPath::try_from(format!("/org/qemu/Display1/Console_{}", idx))?;
         let proxy = AsyncConsoleProxy::builder(conn)
             .path(&obj_path)?
-            .build_async()
+            .build()
             .await?;
         let keyboard = AsyncKeyboardProxy::builder(conn)
             .path(&obj_path)?
-            .build_async()
+            .build()
             .await?;
         let mouse = AsyncMouseProxy::builder(conn)
             .path(&obj_path)?
-            .build_async()
+            .build()
             .await?;
         Ok(Self {
             proxy,
@@ -117,7 +117,10 @@ impl Console {
 
         let (wait_tx, wait_rx) = mpsc::channel();
         let _thread = thread::spawn(move || {
-            let c = zbus::Connection::new_unix_client(p1, false).unwrap();
+            let c = zbus::ConnectionBuilder::unix_stream(p1)
+                .p2p()
+                .build()
+                .unwrap();
             let mut s = zbus::ObjectServer::new(&c);
             let listener = ConsoleListener::new(tx, wait_rx);
             let err = listener.err();
@@ -147,7 +150,10 @@ impl Console {
 
         let (wait_tx, wait_rx) = mpsc::channel();
         let _thread = thread::spawn(move || {
-            let c = zbus::Connection::new_unix_client(p1, false).unwrap();
+            let c = zbus::ConnectionBuilder::unix_stream(p1)
+                .p2p()
+                .build()
+                .unwrap();
             let mut s = zbus::ObjectServer::new(&c);
             let listener = ConsoleListener::new(tx, wait_rx);
             let err = listener.err();

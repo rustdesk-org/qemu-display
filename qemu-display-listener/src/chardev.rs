@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 use zbus::dbus_proxy;
-use zbus::export::zvariant::{Fd, ObjectPath};
+use zbus::zvariant::{Fd, ObjectPath};
 
 use crate::Result;
 
@@ -37,7 +37,7 @@ impl Chardev {
         let obj_path = ObjectPath::try_from(format!("/org/qemu/Display1/Chardev_{}", id))?;
         let proxy = AsyncChardevProxy::builder(conn)
             .path(&obj_path)?
-            .build_async()
+            .build()
             .await?;
         Ok(Self { proxy })
     }

@@ -1,9 +1,9 @@
 use once_cell::sync::OnceCell;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::convert::TryFrom;
-use std::sync::mpsc::{channel, SendError, Sender};
+use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
-use zbus::{dbus_interface, dbus_proxy, export::zvariant::ObjectPath};
+use zbus::{dbus_interface, dbus_proxy, zvariant::ObjectPath};
 use zvariant::derive::Type;
 
 use crate::{EventSender, Result};
@@ -60,7 +60,7 @@ pub enum ClipboardEvent {
 #[derive(Debug)]
 pub(crate) struct ClipboardListener<E: EventSender<Event = ClipboardEvent>> {
     tx: E,
-    err: Arc<OnceCell<SendError<ClipboardEvent>>>,
+    err: Arc<OnceCell<String>>,
 }
 
 #[dbus_interface(name = "org.qemu.Display1.Clipboard")]
@@ -112,11 +112,11 @@ impl<E: 'static + EventSender<Event = ClipboardEvent>> ClipboardListener<E> {
 
     fn send(&mut self, event: ClipboardEvent) {
         if let Err(e) = self.tx.send_event(event) {
-            let _ = self.err.set(e);
+            let _ = self.err.set(e.to_string());
         }
     }
 
-    pub fn err(&self) -> Arc<OnceCell<SendError<ClipboardEvent>>> {
+    pub fn err(&self) -> Arc<OnceCell<String>> {
         self.err.clone()
     }
 }
@@ -134,7 +134,7 @@ impl Clipboard {
         let obj_path = ObjectPath::try_from("/org/qemu/Display1/Clipboard")?;
         let proxy = AsyncClipboardProxy::builder(conn)
             .path(&obj_path)?
-            .build_async()
+            .build()
             .await?;
         Ok(Self {
             conn: conn.clone(),

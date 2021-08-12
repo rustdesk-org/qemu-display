@@ -6,7 +6,7 @@ use std::sync::mpsc::{Receiver, RecvError, SendError};
 use std::sync::Arc;
 
 use derivative::Derivative;
-use zbus::{dbus_interface, export::zvariant::Fd};
+use zbus::{dbus_interface, zvariant::Fd};
 
 use crate::EventSender;
 

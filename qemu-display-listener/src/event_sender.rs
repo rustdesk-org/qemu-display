@@ -1,12 +1,12 @@
 use std::sync::mpsc::{SendError, Sender};
 
-pub(crate) trait EventSender {
+pub(crate) trait EventSender: Send {
     type Event;
 
     fn send_event(&self, t: Self::Event) -> Result<(), SendError<Self::Event>>;
 }
 
-impl<T> EventSender for Sender<T> {
+impl<T: Send> EventSender for Sender<T> {
     type Event = T;
 
     fn send_event(&self, t: Self::Event) -> Result<(), SendError<Self::Event>> {
@@ -15,7 +15,7 @@ impl<T> EventSender for Sender<T> {
 }
 
 #[cfg(feature = "glib")]
-impl<T> EventSender for glib::Sender<T> {
+impl<T: Send> EventSender for glib::Sender<T> {
     type Event = T;
 
     fn send_event(&self, t: Self::Event) -> Result<(), SendError<Self::Event>> {

@@ -16,7 +16,7 @@ fn main() {
 
     let app = gtk::Application::new(Some("org.qemu.rdw.demo"), ApplicationFlags::NON_UNIQUE);
 
-    let conn: zbus::azync::Connection = Connection::new_session()
+    let conn: zbus::azync::Connection = Connection::session()
         .expect("Failed to connect to DBus")
         .into();
 
