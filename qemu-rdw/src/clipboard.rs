@@ -25,26 +25,29 @@ impl Handler {
             .await
             .expect("Failed to listen to the clipboard");
         let proxy = ctxt.proxy.clone();
-        let serial = Rc::new(Cell::new(0));
-        let current_serial = serial.clone();
+        let serials = Rc::new([Cell::new(0), Cell::new(0)]);
+        let current_serials = serials.clone();
         let rx = rx.attach(None, move |evt| {
             use ClipboardEvent::*;
 
             log::debug!("Clipboard event: {:?}", evt);
             match evt {
                 Register | Unregister => {
-                    current_serial.set(0);
-                }
-                Grab { serial, .. } if serial < current_serial.get() => {
-                    log::debug!("Ignored peer grab: {} < {}", serial, current_serial.get());
+                    current_serials[0].set(0);
+                    current_serials[1].set(0);
                 }
                 Grab {
                     selection,
                     serial,
                     mimes,
                 } => {
-                    current_serial.set(serial);
-                    if let Some(clipboard) = clipboard_from_selection(selection) {
+                    if let Some((clipboard, idx)) = clipboard_from_selection(selection) {
+                        if serial < current_serials[idx].get() {
+                            log::debug!("Ignored peer grab: {} < {}", serial, current_serials[idx].get());
+                            return Continue(true);
+                        }
+
+                        current_serials[idx].set(serial);
                         let m: Vec<_> = mimes.iter().map(|s|s.as_str()).collect();
                         let p = proxy.clone();
                         let content = rdw::ContentProvider::new(&m, move |mime, stream, prio| {
@@ -73,7 +76,7 @@ impl Handler {
                     }
                 }
                 Release { selection } => {
-                    if let Some(clipboard) = clipboard_from_selection(selection) {
+                    if let Some((clipboard, _)) = clipboard_from_selection(selection) {
                         // TODO: track if the outside/app changed the clipboard
                         if let Err(e) = clipboard.set_content(gdk::NONE_CONTENT_PROVIDER) {
                             log::warn!("Failed to release clipboard: {}", e);
@@ -81,7 +84,7 @@ impl Handler {
                     }
                 }
                 Request { selection, mimes, tx } => {
-                    if let Some(clipboard) = clipboard_from_selection(selection) {
+                    if let Some((clipboard, _)) = clipboard_from_selection(selection) {
                         glib::MainContext::default().spawn_local(async move {
                             let m: Vec<_> = mimes.iter().map(|s|s.as_str()).collect();
                             let res = clipboard.read_async_future(&m, glib::Priority::default()).await;
@@ -118,12 +121,12 @@ impl Handler {
         let cb_handler = watch_clipboard(
             ctxt.proxy.clone(),
             ClipboardSelection::Clipboard,
-            serial.clone(),
+            serials.clone(),
         );
         let cb_primary_handler = watch_clipboard(
             ctxt.proxy.clone(),
             ClipboardSelection::Primary,
-            serial.clone(),
+            serials.clone(),
         );
 
         ctxt.register().await?;
@@ -138,10 +141,10 @@ impl Handler {
 fn watch_clipboard(
     proxy: AsyncClipboardProxy<'static>,
     selection: ClipboardSelection,
-    serial: Rc<Cell<u32>>,
+    serials: Rc<[Cell<u32>; 2]>,
 ) -> Option<SignalHandlerId> {
-    let clipboard = match clipboard_from_selection(selection) {
-        Some(clipboard) => clipboard,
+    let (clipboard, idx) = match clipboard_from_selection(selection) {
+        Some(it) => it,
         None => return None,
     };
 
@@ -153,16 +156,16 @@ fn watch_clipboard(
         if let Some(formats) = clipboard.formats() {
             let types = formats.mime_types();
             log::debug!(">clipboard-changed({:?}): {:?}", selection, types);
-            let proxy_clone = proxy.clone();
-            let serial = serial.clone();
+            let proxy = proxy.clone();
+            let serials = serials.clone();
             glib::MainContext::default().spawn_local(async move {
                 if types.is_empty() {
-                    let _ = proxy_clone.release(selection).await;
+                    let _ = proxy.release(selection).await;
                 } else {
                     let mimes: Vec<_> = types.iter().map(|s| s.as_str()).collect();
-                    let ser = serial.get();
-                    let _ = proxy_clone.grab(selection, ser, &mimes).await;
-                    serial.set(ser + 1);
+                    let ser = serials[idx].get();
+                    let _ = proxy.grab(selection, ser, &mimes).await;
+                    serials[idx].set(ser + 1);
                 }
             });
         }
@@ -170,15 +173,15 @@ fn watch_clipboard(
     Some(id)
 }
 
-fn clipboard_from_selection(selection: ClipboardSelection) -> Option<gdk::Clipboard> {
+fn clipboard_from_selection(selection: ClipboardSelection) -> Option<(gdk::Clipboard, usize)> {
     let display = match gdk::Display::default() {
         Some(display) => display,
         None => return None,
     };
 
     match selection {
-        ClipboardSelection::Clipboard => Some(display.clipboard()),
-        ClipboardSelection::Primary => Some(display.primary_clipboard()),
+        ClipboardSelection::Clipboard => Some((display.clipboard(), 0)),
+        ClipboardSelection::Primary => Some((display.primary_clipboard(), 1)),
         _ => {
             log::warn!("Unsupport clipboard selection: {:?}", selection);
             None
