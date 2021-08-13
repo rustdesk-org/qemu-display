@@ -37,6 +37,8 @@ pub trait Clipboard {
     ) -> zbus::Result<(String, Vec<u8>)>;
 }
 
+pub type ClipboardReplyTx = Sender<Result<(String, Vec<u8>)>>;
+
 // TODO: replace events mpsc with async traits
 #[derive(Debug)]
 pub enum ClipboardEvent {
@@ -53,7 +55,7 @@ pub enum ClipboardEvent {
     Request {
         selection: ClipboardSelection,
         mimes: Vec<String>,
-        tx: Mutex<Sender<Result<(String, Vec<u8>)>>>,
+        tx: Mutex<ClipboardReplyTx>,
     },
 }
 
