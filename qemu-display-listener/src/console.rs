@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 use std::os::unix::net::UnixStream;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Mutex;
 use std::{os::unix::io::AsRawFd, thread};
 
 use zbus::{
@@ -122,7 +123,7 @@ impl Console {
                 .build()
                 .unwrap();
             let mut s = zbus::ObjectServer::new(&c);
-            let listener = ConsoleListener::new(tx, wait_rx);
+            let listener = ConsoleListener::new(Mutex::new(tx), wait_rx);
             let err = listener.err();
             s.at("/org/qemu/Display1/Listener", listener).unwrap();
             loop {

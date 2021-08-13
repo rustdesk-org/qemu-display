@@ -2,7 +2,7 @@ use once_cell::sync::OnceCell;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::convert::TryFrom;
 use std::sync::mpsc::{channel, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use zbus::{dbus_interface, dbus_proxy, zvariant::ObjectPath};
 use zvariant::derive::Type;
 
@@ -53,7 +53,7 @@ pub enum ClipboardEvent {
     Request {
         selection: ClipboardSelection,
         mimes: Vec<String>,
-        tx: Sender<Result<(String, Vec<u8>)>>,
+        tx: Mutex<Sender<Result<(String, Vec<u8>)>>>,
     },
 }
 
@@ -94,7 +94,7 @@ impl<E: 'static + EventSender<Event = ClipboardEvent>> ClipboardListener<E> {
         self.send(ClipboardEvent::Request {
             selection,
             mimes,
-            tx,
+            tx: Mutex::new(tx),
         });
         rx.recv()
             .map_err(|e| zbus::fdo::Error::Failed(format!("Request recv failed: {}", e)))?

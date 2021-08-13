@@ -3,7 +3,7 @@ use std::ops::Drop;
 use std::os::unix::io::IntoRawFd;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::mpsc::{Receiver, RecvError, SendError};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use derivative::Derivative;
 use zbus::{dbus_interface, zvariant::Fd};
@@ -94,7 +94,7 @@ pub enum ConsoleEvent {
 #[derive(Debug)]
 pub(crate) struct ConsoleListener<E: EventSender<Event = ConsoleEvent>> {
     tx: E,
-    wait_rx: Receiver<()>,
+    wait_rx: Mutex<Receiver<()>>,
     err: Arc<OnceCell<SendError<ConsoleEvent>>>,
 }
 
@@ -188,7 +188,7 @@ impl<E: EventSender<Event = ConsoleEvent>> ConsoleListener<E> {
     pub(crate) fn new(tx: E, wait_rx: Receiver<()>) -> Self {
         ConsoleListener {
             tx,
-            wait_rx,
+            wait_rx: Mutex::new(wait_rx),
             err: Default::default(),
         }
     }
@@ -200,7 +200,7 @@ impl<E: EventSender<Event = ConsoleEvent>> ConsoleListener<E> {
     }
 
     fn wait(&mut self) -> Result<(), RecvError> {
-        self.wait_rx.recv()
+        self.wait_rx.lock().unwrap().recv()
     }
 
     pub fn err(&self) -> Arc<OnceCell<SendError<ConsoleEvent>>> {

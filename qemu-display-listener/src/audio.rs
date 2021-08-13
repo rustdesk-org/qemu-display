@@ -3,7 +3,7 @@ use std::default::Default;
 use std::os::unix::net::UnixStream;
 use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, SendError};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::{os::unix::io::AsRawFd, thread};
 
 use zbus::{dbus_interface, dbus_proxy, zvariant::Fd};
@@ -294,7 +294,7 @@ impl Audio {
                 .build()
                 .unwrap();
             let mut s = zbus::ObjectServer::new(&c);
-            let listener = AudioOutListener::new(tx);
+            let listener = AudioOutListener::new(Mutex::new(tx));
             let err = listener.err();
             s.at("/org/qemu/Display1/AudioOutListener", listener)
                 .unwrap();
@@ -326,7 +326,7 @@ impl Audio {
                 .build()
                 .unwrap();
             let mut s = zbus::ObjectServer::new(&c);
-            let listener = AudioInListener::new(tx);
+            let listener = AudioInListener::new(Mutex::new(tx));
             let err = listener.err();
             s.at("/org/qemu/Display1/AudioInListener", listener)
                 .unwrap();

@@ -107,7 +107,7 @@ impl Handler {
                                     Err(qdl::Error::Failed(format!("{}", e)))
                                 }
                             };
-                            let _ = tx.send(reply);
+                            let _ = tx.lock().unwrap().send(reply);
                         });
                     }
                 }
