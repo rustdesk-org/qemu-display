@@ -23,6 +23,10 @@ pub trait Chardev {
     /// Name property
     #[dbus_proxy(property)]
     fn name(&self) -> zbus::Result<String>;
+
+    /// Owner property
+    #[dbus_proxy(property)]
+    fn owner(&self) -> zbus::Result<String>;
 }
 
 #[derive(derivative::Derivative)]
