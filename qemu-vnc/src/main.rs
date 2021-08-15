@@ -9,7 +9,7 @@ use std::{io, thread, time};
 use clap::Clap;
 use image::GenericImage;
 use keycodemap::*;
-use qemu_display_listener::{Console, ConsoleEvent, MouseButton, VMProxy};
+use qemu_display::{Console, ConsoleEvent, MouseButton, VMProxy};
 use vnc::{
     server::Event as VncEvent, server::FramebufferUpdate, Encoding, Error as VncError, PixelFormat,
     Rect, Screen, Server as VncServer,

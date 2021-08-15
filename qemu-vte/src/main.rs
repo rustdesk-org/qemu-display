@@ -1,6 +1,6 @@
 use futures::prelude::*;
 use glib::{clone, MainContext};
-use qemu_display_listener::Chardev;
+use qemu_display::Chardev;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 use vte::prelude::*;

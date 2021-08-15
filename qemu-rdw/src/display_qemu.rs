@@ -3,7 +3,7 @@ use gtk::{glib, prelude::*};
 use once_cell::sync::OnceCell;
 
 use keycodemap::KEYMAP_XORGEVDEV2QNUM;
-use qemu_display_listener::Console;
+use qemu_display::Console;
 use rdw::DisplayExt;
 
 mod imp {
@@ -102,7 +102,7 @@ mod imp {
             }));
 
             obj.connect_scroll_discrete(clone!(@weak obj => move |_, scroll| {
-                use qemu_display_listener::MouseButton;
+                use qemu_display::MouseButton;
 
                 log::debug!("scroll-discrete: {:?}", scroll);
 
@@ -144,7 +144,7 @@ mod imp {
                 rx.attach(
                     None,
                     clone!(@weak widget => @default-panic, move |evt| {
-                        use qemu_display_listener::ConsoleEvent::*;
+                        use qemu_display::ConsoleEvent::*;
 
                         log::debug!("Console event: {:?}", evt);
                         match evt {
@@ -255,8 +255,8 @@ impl DisplayQemu {
     }
 }
 
-fn from_gdk_button(button: u32) -> qemu_display_listener::MouseButton {
-    use qemu_display_listener::MouseButton::*;
+fn from_gdk_button(button: u32) -> qemu_display::MouseButton {
+    use qemu_display::MouseButton::*;
 
     match button {
         1 => Left,

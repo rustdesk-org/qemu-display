@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "keycodemap",
-    "qemu-display-listener",
+    "qemu-display",
     "qemu-rdw",
     "qemu-vnc",
     "qemu-vte",

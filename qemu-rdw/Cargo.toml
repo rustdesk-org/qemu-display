@@ -11,7 +11,7 @@ log = "0.4"
 pretty_env_logger = "0.4"
 once_cell = "1.5"
 zbus = { version = "2.0.0-beta" }
-qemu-display-listener = { path = "../qemu-display-listener", features = ["glib"] }
+qemu-display = { path = "../qemu-display", features = ["glib"] }
 keycodemap = { path = "../keycodemap" }
 gtk = { package = "gtk4", git = "https://github.com/gtk-rs/gtk4-rs" }
 rdw = { git = "https://gitlab.gnome.org/malureau/rdw.git" }

@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-qemu-display-listener = { path = "../qemu-display-listener" }
+qemu-display = { path = "../qemu-display" }
 keycodemap = { path ="../keycodemap" }
 vnc = "0.4.0"
 clap = "3.0.0-beta.2"

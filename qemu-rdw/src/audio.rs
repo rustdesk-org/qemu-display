@@ -2,7 +2,7 @@ use std::error::Error;
 use std::result::Result;
 use std::thread;
 
-use qemu_display_listener::Audio;
+use qemu_display::Audio;
 
 #[derive(Debug, Default)]
 pub struct Handler {
@@ -17,7 +17,7 @@ impl Handler {
         let thread = thread::spawn(move || loop {
             match rx.recv() {
                 Ok(event) => {
-                    use qemu_display_listener::AudioOutEvent::*;
+                    use qemu_display::AudioOutEvent::*;
 
                     match event {
                         Init { id, info } => {

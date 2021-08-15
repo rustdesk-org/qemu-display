@@ -2,7 +2,7 @@ use gio::ApplicationFlags;
 use glib::{clone, MainContext};
 use gtk::{gio, glib, prelude::*};
 use once_cell::sync::OnceCell;
-use qemu_display_listener::{Chardev, Console, Introspect};
+use qemu_display::{Chardev, Console, Introspect};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 use zbus::Connection;

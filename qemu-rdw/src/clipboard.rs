@@ -5,7 +5,7 @@ use std::result::Result;
 
 use crate::glib::{self, clone, prelude::*, SignalHandlerId, SourceId};
 use gtk::{gdk, gio, prelude::DisplayExt, prelude::*};
-use qemu_display_listener::{
+use qemu_display::{
     self as qdl, AsyncClipboardProxy, Clipboard, ClipboardEvent, ClipboardSelection,
 };
 
