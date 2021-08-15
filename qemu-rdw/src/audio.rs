@@ -10,13 +10,7 @@ pub struct Handler {
 }
 
 impl Handler {
-    pub async fn new(conn: &zbus::azync::Connection) -> Result<Self, Box<dyn Error>> {
-        if !Audio::available(conn).await {
-            log::debug!("No qemu audio provided on the bus");
-            return Ok(Self::default());
-        }
-
-        let audio = Audio::new(conn).await?;
+    pub async fn new(audio: Audio) -> Result<Self, Box<dyn Error>> {
         let rx = audio.listen_out().await?;
         let mut gst = rdw::GstAudio::new()?;
 

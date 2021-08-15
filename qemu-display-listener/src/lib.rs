@@ -30,6 +30,12 @@ pub use keyboard::*;
 mod mouse;
 pub use mouse::*;
 
+mod introspect;
+pub use introspect::*;
+
+mod usbredir;
+pub use usbredir::*;
+
 #[cfg(test)]
 mod tests {
     #[test]

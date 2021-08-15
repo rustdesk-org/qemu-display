@@ -6,7 +6,6 @@ use std::io;
 pub enum Error {
     Io(io::Error),
     Zbus(zbus::Error),
-    Zvariant(zvariant::Error),
     Failed(String),
 }
 
@@ -15,7 +14,6 @@ impl fmt::Display for Error {
         match self {
             Error::Io(e) => write!(f, "{}", e),
             Error::Zbus(e) => write!(f, "{}", e),
-            Error::Zvariant(e) => write!(f, "{}", e),
             Error::Failed(e) => write!(f, "{}", e),
         }
     }
@@ -26,7 +24,6 @@ impl error::Error for Error {
         match self {
             Error::Io(e) => Some(e),
             Error::Zbus(e) => Some(e),
-            Error::Zvariant(e) => Some(e),
             Error::Failed(_) => None,
         }
     }
@@ -44,9 +41,15 @@ impl From<zbus::Error> for Error {
     }
 }
 
+impl From<zbus::fdo::Error> for Error {
+    fn from(e: zbus::fdo::Error) -> Self {
+        Error::Zbus(e.into())
+    }
+}
+
 impl From<zvariant::Error> for Error {
     fn from(e: zvariant::Error) -> Self {
-        Error::Zvariant(e)
+        Error::Zbus(e.into())
     }
 }
 

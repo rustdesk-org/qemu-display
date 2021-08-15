@@ -1,7 +1,6 @@
 use once_cell::sync::OnceCell;
 use std::default::Default;
 use std::os::unix::net::UnixStream;
-use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, SendError};
 use std::sync::{Arc, Mutex};
 use std::{os::unix::io::AsRawFd, thread};
@@ -261,24 +260,6 @@ impl Audio {
     pub async fn new(conn: &zbus::azync::Connection) -> Result<Self> {
         let proxy = AsyncAudioProxy::new(conn).await?;
         Ok(Self { proxy })
-    }
-
-    pub async fn available(conn: &zbus::azync::Connection) -> bool {
-        // TODO: we may want to generalize interface detection
-        let ip = zbus::fdo::AsyncIntrospectableProxy::builder(conn)
-            .destination("org.qemu")
-            .unwrap()
-            .path("/org/qemu/Display1")
-            .unwrap()
-            .build()
-            .await
-            .unwrap();
-        let introspect = zbus::xml::Node::from_str(&ip.introspect().await.unwrap()).unwrap();
-        let has_audio = introspect
-            .nodes()
-            .iter()
-            .any(|n| n.name().map(|n| n == "Audio").unwrap_or(false));
-        has_audio
     }
 
     pub async fn listen_out(&self) -> Result<Receiver<AudioOutEvent>> {
