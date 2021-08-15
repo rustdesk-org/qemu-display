@@ -2,7 +2,7 @@ use gio::ApplicationFlags;
 use glib::{clone, MainContext};
 use gtk::{gio, glib, prelude::*};
 use once_cell::sync::OnceCell;
-use qemu_display::{Chardev, Console, Introspect};
+use qemu_display::{Chardev, Console, Display};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 use zbus::Connection;
@@ -33,13 +33,15 @@ fn main() {
         let audio_clone = audio.clone();
         let clipboard_clone = clipboard.clone();
         MainContext::default().spawn_local(clone!(@strong window => async move {
-            let intro = Introspect::new(&conn).await.unwrap();
+            let display = Display::new(&conn).await.unwrap();
 
             let console = Console::new(&conn, 0).await.expect("Failed to get the QEMU console");
-            let display = display_qemu::DisplayQemu::new(console);
-            window.set_child(Some(&display));
+            let rdw = display_qemu::DisplayQemu::new(console);
+            window.set_child(Some(&rdw));
 
-            if let Ok(Some(audio)) = intro.audio().await {
+            let usbredir = display.usbredir().await;
+
+            if let Ok(Some(audio)) = display.audio().await {
                 match audio::Handler::new(audio).await {
                     Ok(handler) => audio_clone.set(handler).unwrap(),
                     Err(e) => log::warn!("Failed to setup audio: {}", e),

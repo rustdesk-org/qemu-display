@@ -6,12 +6,12 @@ use zvariant::OwnedObjectPath;
 
 use crate::{Audio, Chardev, Result, UsbRedir};
 
-pub struct Introspect {
+pub struct Display {
     conn: Connection,
     objects: ManagedObjects,
 }
 
-impl Introspect {
+impl Display {
     pub async fn new(conn: &Connection) -> Result<Self> {
         let objects = zbus::fdo::AsyncObjectManagerProxy::builder(&conn)
             .destination("org.qemu")?

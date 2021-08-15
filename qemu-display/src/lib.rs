@@ -30,8 +30,8 @@ pub use keyboard::*;
 mod mouse;
 pub use mouse::*;
 
-mod introspect;
-pub use introspect::*;
+mod display;
+pub use display::*;
 
 mod usbredir;
 pub use usbredir::*;
