@@ -32,7 +32,6 @@ pub trait Chardev {
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
 pub struct Chardev {
-    #[derivative(Debug = "ignore")]
     pub proxy: AsyncChardevProxy<'static>,
 }
 

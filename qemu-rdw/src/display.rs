@@ -17,7 +17,7 @@ mod imp {
     }
 
     unsafe impl ClassStruct for RdwDisplayQemuClass {
-        type Type = DisplayQemu;
+        type Type = Display;
     }
 
     #[repr(C)]
@@ -34,24 +34,24 @@ mod imp {
     }
 
     unsafe impl InstanceStruct for RdwDisplayQemu {
-        type Type = DisplayQemu;
+        type Type = Display;
     }
 
     #[derive(Debug, Default)]
-    pub struct DisplayQemu {
+    pub struct Display {
         pub(crate) console: OnceCell<Console>,
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for DisplayQemu {
+    impl ObjectSubclass for Display {
         const NAME: &'static str = "RdwDisplayQemu";
-        type Type = super::DisplayQemu;
+        type Type = super::Display;
         type ParentType = rdw::Display;
         type Class = RdwDisplayQemuClass;
         type Instance = RdwDisplayQemu;
     }
 
-    impl ObjectImpl for DisplayQemu {
+    impl ObjectImpl for Display {
         fn constructed(&self, obj: &Self::Type) {
             self.parent_constructed(obj);
 
@@ -129,7 +129,7 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for DisplayQemu {
+    impl WidgetImpl for Display {
         fn realize(&self, widget: &Self::Type) {
             self.parent_realize(widget);
 
@@ -228,9 +228,9 @@ mod imp {
         }
     }
 
-    impl rdw::DisplayImpl for DisplayQemu {}
+    impl rdw::DisplayImpl for Display {}
 
-    impl DisplayQemu {
+    impl Display {
         pub(crate) fn set_console(&self, console: Console) {
             self.console.set(console).unwrap();
         }
@@ -238,19 +238,19 @@ mod imp {
 }
 
 glib::wrapper! {
-    pub struct DisplayQemu(ObjectSubclass<imp::DisplayQemu>) @extends rdw::Display, gtk::Widget, @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
+    pub struct Display(ObjectSubclass<imp::Display>) @extends rdw::Display, gtk::Widget, @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
-impl DisplayQemu {
+impl Display {
     pub fn new(console: Console) -> Self {
         let obj = glib::Object::new::<Self>(&[]).unwrap();
-        let self_ = imp::DisplayQemu::from_instance(&obj);
+        let self_ = imp::Display::from_instance(&obj);
         self_.set_console(console);
         obj
     }
 
     pub(crate) fn console(&self) -> &Console {
-        let self_ = imp::DisplayQemu::from_instance(self);
+        let self_ = imp::Display::from_instance(self);
         self_.console.get().unwrap()
     }
 }

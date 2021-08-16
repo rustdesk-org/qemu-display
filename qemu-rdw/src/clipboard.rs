@@ -17,9 +17,7 @@ pub struct Handler {
 }
 
 impl Handler {
-    pub async fn new(conn: &zbus::azync::Connection) -> Result<Self, Box<dyn Error>> {
-        let ctxt = Clipboard::new(conn).await?;
-
+    pub async fn new(ctxt: Clipboard) -> Result<Self, Box<dyn Error>> {
         let rx = ctxt
             .glib_listen()
             .await

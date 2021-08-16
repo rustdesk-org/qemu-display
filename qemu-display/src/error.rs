@@ -1,3 +1,5 @@
+use usbredirhost::rusb;
+
 use std::error;
 use std::fmt;
 use std::io;
@@ -6,14 +8,18 @@ use std::io;
 pub enum Error {
     Io(io::Error),
     Zbus(zbus::Error),
+    Rusb(rusb::Error),
+    Usbredir(usbredirhost::Error),
     Failed(String),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Io(e) => write!(f, "{}", e),
-            Error::Zbus(e) => write!(f, "{}", e),
+            Error::Io(e) => write!(f, "IO error: {}", e),
+            Error::Zbus(e) => write!(f, "zbus error: {}", e),
+            Error::Rusb(e) => write!(f, "rusb error: {}", e),
+            Error::Usbredir(e) => write!(f, "usbredir error: {}", e),
             Error::Failed(e) => write!(f, "{}", e),
         }
     }
@@ -24,6 +30,8 @@ impl error::Error for Error {
         match self {
             Error::Io(e) => Some(e),
             Error::Zbus(e) => Some(e),
+            Error::Rusb(e) => Some(e),
+            Error::Usbredir(e) => Some(e),
             Error::Failed(_) => None,
         }
     }
@@ -50,6 +58,18 @@ impl From<zbus::fdo::Error> for Error {
 impl From<zvariant::Error> for Error {
     fn from(e: zvariant::Error) -> Self {
         Error::Zbus(e.into())
+    }
+}
+
+impl From<rusb::Error> for Error {
+    fn from(e: rusb::Error) -> Self {
+        Error::Rusb(e)
+    }
+}
+
+impl From<usbredirhost::Error> for Error {
+    fn from(e: usbredirhost::Error) -> Self {
+        Error::Usbredir(e)
     }
 }
 

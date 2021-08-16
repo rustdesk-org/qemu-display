@@ -4,7 +4,7 @@ use zbus::azync::Connection;
 use zbus::fdo::ManagedObjects;
 use zvariant::OwnedObjectPath;
 
-use crate::{Audio, Chardev, Result, UsbRedir};
+use crate::{Audio, Chardev, Clipboard, Result, UsbRedir};
 
 pub struct Display {
     conn: Connection,
@@ -36,6 +36,17 @@ impl Display {
         }
 
         Ok(Some(Audio::new(&self.conn).await?))
+    }
+
+    pub async fn clipboard(&self) -> Result<Option<Clipboard>> {
+        if !self
+            .objects
+            .contains_key(&OwnedObjectPath::try_from("/org/qemu/Display1/Clipboard").unwrap())
+        {
+            return Ok(None);
+        }
+
+        Ok(Some(Clipboard::new(&self.conn).await?))
     }
 
     pub async fn chardevs(&self) -> Vec<Chardev> {
