@@ -1,16 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
+  <menu id="gear_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_USB devices</attribute>
+        <attribute name="action">app.usb</attribute>
+      </item>
+    </section>
+  </menu>
+
   <object class="GtkApplicationWindow" id="window">
     <property name="title" translatable="yes">qemu-rdw demo</property>
     <property name="default-width">1024</property>
     <property name="default-height">768</property>
     <child type="titlebar">
       <object class="GtkHeaderBar" id="headerbar">
-        <property name="show_title_buttons">True</property>
         <child type="end">
-          <object class="GtkButton">
-            <property name="action-name">app.usb</property>
-            <property name="label">USB devices</property>
+          <object class="GtkMenuButton" id="gear_menu_button">
+            <property name="valign">center</property>
+            <property name="focus-on-click">0</property>
+            <property name="menu-model">gear_menu</property>
+            <property name="icon-name">open-menu-symbolic</property>
+            <accessibility>
+              <property name="label" translatable="yes">Primary menu</property>
+            </accessibility>
           </object>
         </child>
       </object>
