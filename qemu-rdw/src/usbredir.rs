@@ -42,11 +42,23 @@ impl Handler {
                         if state {
                             item.set_property("active", false).unwrap();
                         }
-                        widget.emit_by_name("show-error",&[&e.to_string()]).unwrap();
+                        widget.emit_by_name("show-error", &[&e.to_string()]).unwrap();
                     },
                 }
             }));
         });
+
+        let usbredir = self.usbredir.clone();
+        MainContext::default().spawn_local(clone!(@weak widget => async move {
+            use futures::stream::StreamExt; // for `next`
+            widget
+                .set_property("free-channels", usbredir.n_free_channels().await)
+                .unwrap();
+            let mut n = usbredir.receive_n_free_channels();
+            while let Some(n) = n.next().await {
+                widget.set_property("free-channels", n).unwrap();
+            }
+        }));
 
         widget
     }

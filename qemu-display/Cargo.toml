@@ -21,3 +21,4 @@ futures-util = { version = "0.3.8", features = ["async-await-macro"] }
 once_cell = "1.5"
 futures = "0.3.13"
 usbredirhost = "0.0.1"
+async-broadcast = "0.3.3"

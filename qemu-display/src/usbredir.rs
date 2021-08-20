@@ -1,3 +1,5 @@
+use async_broadcast::{broadcast, Receiver, Sender};
+use futures::Stream;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -7,10 +9,11 @@ use std::{
         io::{AsRawFd, RawFd},
         net::UnixStream,
     },
+    pin::Pin,
     sync::{Arc, Mutex},
+    task::{Context, Poll},
     thread::JoinHandle,
 };
-
 use usbredirhost::{
     rusb::{self, UsbContext},
     Device, DeviceHandler, LogLevel,
@@ -172,20 +175,37 @@ impl Key {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Event {
+    NFreeChannels(i32),
+}
+
 #[derive(Debug)]
 struct Inner {
     chardevs: Vec<Chardev>,
     handlers: HashMap<Key, Handler>,
+    channel: (Sender<Event>, Receiver<Event>),
 }
 
 impl Inner {
-    async fn available_chardev(&self) -> Option<&Chardev> {
+    // could make use of async combinators..
+    async fn first_available_chardev(&self) -> Option<&Chardev> {
         for c in &self.chardevs {
             if c.proxy.owner().await.unwrap_or_default().is_empty() {
                 return Some(c);
             }
         }
         None
+    }
+
+    async fn n_available_chardev(&self) -> usize {
+        let mut n = 0;
+        for c in &self.chardevs {
+            if c.proxy.owner().await.unwrap_or_default().is_empty() {
+                n += 1;
+            }
+        }
+        n
     }
 }
 
@@ -196,9 +216,12 @@ pub struct UsbRedir {
 
 impl UsbRedir {
     pub fn new(chardevs: Vec<Chardev>) -> Self {
+        let mut channel = broadcast(1);
+        channel.0.set_overflow(true);
         Self {
             inner: Arc::new(RefCell::new(Inner {
                 chardevs,
+                channel,
                 handlers: Default::default(),
             })),
         }
@@ -211,19 +234,29 @@ impl UsbRedir {
     ) -> Result<bool> {
         let mut inner = self.inner.borrow_mut();
         let key = Key::from_device(device);
+        let mut nfree = inner.n_available_chardev().await as _;
 
         if state {
             if !inner.handlers.contains_key(&key) {
                 let chardev = inner
-                    .available_chardev()
+                    .first_available_chardev()
                     .await
                     .ok_or_else(|| Error::Failed("There are no free USB channels".into()))?;
                 let handler = Handler::new(device, chardev).await?;
                 inner.handlers.insert(key, handler);
             }
+            nfree -= 1;
         } else {
             inner.handlers.remove(&key);
+            nfree += 1;
         }
+
+        // We should do better and watch for owner properties changes, but this would require tasks
+        let _ = inner
+            .channel
+            .0
+            .broadcast(Event::NFreeChannels(nfree))
+            .await;
 
         Ok(state)
     }
@@ -233,30 +266,64 @@ impl UsbRedir {
 
         inner.handlers.contains_key(&Key::from_device(device))
     }
+
+    pub async fn n_free_channels(&self) -> i32 {
+        self.inner.borrow().n_available_chardev().await as _
+    }
+
+    pub fn receive_n_free_channels(&self) -> Pin<Box<dyn Stream<Item = i32>>> {
+        Box::pin(NFreeChannelsStream {
+            receiver: self.inner.borrow().channel.1.clone(),
+        })
+    }
+}
+
+#[derive(Debug)]
+struct NFreeChannelsStream {
+    receiver: Receiver<Event>,
+}
+
+impl Stream for NFreeChannelsStream {
+    type Item = i32;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut this = Pin::new(self);
+
+        match Stream::poll_next(Pin::new(&mut this.receiver), cx) {
+            Poll::Ready(Some(Event::NFreeChannels(n))) => Poll::Ready(Some(n)),
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
+    }
 }
 
 fn fd_poll_readable(fd: RawFd, wait: Option<RawFd>) -> std::io::Result<bool> {
     let mut fds = vec![libc::pollfd {
         fd,
-        events: libc::POLLIN|libc::POLLHUP,
+        events: libc::POLLIN | libc::POLLHUP,
         revents: 0,
     }];
     if let Some(wait) = wait {
         fds.push(libc::pollfd {
             fd: wait,
-            events: libc::POLLIN|libc::POLLHUP,
+            events: libc::POLLIN | libc::POLLHUP,
             revents: 0,
         });
     }
-    let ret = unsafe { libc::poll(fds.as_mut_ptr(),
-                                  fds.len() as _,
-                                  if wait.is_some() { -1 } else { 0 }) };
+    let ret = unsafe {
+        libc::poll(
+            fds.as_mut_ptr(),
+            fds.len() as _,
+            if wait.is_some() { -1 } else { 0 },
+        )
+    };
     if ret < 0 {
         Err(std::io::Error::last_os_error())
     } else if ret == 0 {
         Ok(false)
-    } else if fds[0].revents & libc::POLLHUP != 0 ||
-        (wait.is_some() && fds[1].revents & libc::POLLIN != 0) {
+    } else if fds[0].revents & libc::POLLHUP != 0
+        || (wait.is_some() && fds[1].revents & libc::POLLIN != 0)
+    {
         Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "hup"))
     } else {
         Ok(fds[0].revents & libc::POLLIN != 0)

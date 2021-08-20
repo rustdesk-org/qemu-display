@@ -34,7 +34,7 @@ mod display;
 pub use display::*;
 
 mod usbredir;
-pub use usbredir::*;
+pub use usbredir::UsbRedir;
 
 #[cfg(test)]
 mod tests {
