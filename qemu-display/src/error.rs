@@ -1,5 +1,6 @@
 use usbredirhost::rusb;
 
+use std::convert::Infallible;
 use std::error;
 use std::fmt;
 use std::io;
@@ -61,6 +62,12 @@ impl From<zvariant::Error> for Error {
     }
 }
 
+impl From<zbus::names::Error> for Error {
+    fn from(e: zbus::names::Error) -> Self {
+        Error::Zbus(e.into())
+    }
+}
+
 impl From<rusb::Error> for Error {
     fn from(e: rusb::Error) -> Self {
         Error::Rusb(e)
@@ -70,6 +77,12 @@ impl From<rusb::Error> for Error {
 impl From<usbredirhost::Error> for Error {
     fn from(e: usbredirhost::Error) -> Self {
         Error::Usbredir(e)
+    }
+}
+
+impl From<Infallible> for Error {
+    fn from(_: Infallible) -> Self {
+        unreachable!()
     }
 }
 

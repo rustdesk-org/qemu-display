@@ -27,6 +27,37 @@ struct App {
 impl App {
     fn new() -> Self {
         let app = gtk::Application::new(Some("org.qemu.rdw.demo"), ApplicationFlags::NON_UNIQUE);
+        app.add_main_option(
+            &glib::OPTION_REMAINING,
+            glib::Char(0),
+            glib::OptionFlags::NONE,
+            glib::OptionArg::StringArray,
+            "VM-NAME",
+            Some("VM name"),
+        );
+        app.add_main_option(
+            "version",
+            glib::Char(0),
+            glib::OptionFlags::NONE,
+            glib::OptionArg::None,
+            "Show program version",
+            None,
+        );
+
+        let opt_name: Arc<RefCell<Option<String>>> = Default::default();
+        let name = opt_name.clone();
+        app.connect_handle_local_options(move |_, opt| {
+            if opt.lookup_value("version", None).is_some() {
+                println!("Version: {}", env!("CARGO_PKG_VERSION"));
+                return 0;
+            }
+            name.replace(
+                opt.lookup_value(&glib::OPTION_REMAINING, None)
+                    .and_then(|args| args.child_value(0).get::<String>()),
+            );
+            -1
+        });
+
         let conn = Connection::session()
             .expect("Failed to connect to DBus")
             .into();
@@ -53,8 +84,21 @@ impl App {
             window.set_application(Some(app));
 
             let app_clone = app_clone.clone();
+            let opt_name = opt_name.clone();
             MainContext::default().spawn_local(async move {
-                let display = Display::new(app_clone.connection()).await.unwrap();
+                let name = if let Some(name) = opt_name.borrow().as_ref() {
+                    let list = Display::by_name(app_clone.connection()).await.unwrap();
+                    Some(
+                        list.get(name)
+                            .expect(&format!("Can't find VM name: {}", name))
+                            .clone(),
+                    )
+                } else {
+                    None
+                };
+                let display = Display::new(app_clone.connection(), name.as_ref())
+                    .await
+                    .unwrap();
 
                 let console = Console::new(app_clone.connection(), 0)
                     .await

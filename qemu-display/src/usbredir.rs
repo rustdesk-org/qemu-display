@@ -252,11 +252,7 @@ impl UsbRedir {
         }
 
         // We should do better and watch for owner properties changes, but this would require tasks
-        let _ = inner
-            .channel
-            .0
-            .broadcast(Event::NFreeChannels(nfree))
-            .await;
+        let _ = inner.channel.0.broadcast(Event::NFreeChannels(nfree)).await;
 
         Ok(state)
     }

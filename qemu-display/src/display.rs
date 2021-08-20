@@ -1,10 +1,17 @@
 use futures::stream::{self, StreamExt};
+use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::convert::TryInto;
 use zbus::azync::Connection;
+use zbus::fdo;
 use zbus::fdo::ManagedObjects;
+use zbus::names::BusName;
+use zbus::names::OwnedUniqueName;
+use zbus::names::UniqueName;
+use zbus::names::WellKnownName;
 use zvariant::OwnedObjectPath;
 
-use crate::{Audio, Chardev, Clipboard, Result, UsbRedir};
+use crate::{AsyncVMProxy, Audio, Chardev, Clipboard, Error, Result, UsbRedir};
 
 pub struct Display {
     conn: Connection,
@@ -12,9 +19,36 @@ pub struct Display {
 }
 
 impl Display {
-    pub async fn new(conn: &Connection) -> Result<Self> {
-        let objects = zbus::fdo::AsyncObjectManagerProxy::builder(&conn)
-            .destination("org.qemu")?
+    pub async fn by_name(conn: &Connection) -> Result<HashMap<String, OwnedUniqueName>> {
+        let mut hm = HashMap::new();
+        let list = fdo::AsyncDBusProxy::new(conn)
+            .await?
+            .list_queued_owners(WellKnownName::from_str_unchecked("org.qemu"))
+            .await?;
+        for dest in list.into_iter() {
+            let name = AsyncVMProxy::builder(conn)
+                .destination(UniqueName::from(&dest))?
+                .build()
+                .await?
+                .name()
+                .await?;
+            hm.insert(name, dest);
+        }
+        Ok(hm)
+    }
+
+    pub async fn new<'d, D>(conn: &Connection, dest: Option<D>) -> Result<Self>
+    where
+        D: TryInto<BusName<'d>>,
+        D::Error: Into<Error>,
+    {
+        let dest: BusName = if let Some(dest) = dest {
+            dest.try_into().map_err(Into::into)?
+        } else {
+            "org.qemu".try_into().unwrap()
+        };
+        let objects = fdo::AsyncObjectManagerProxy::builder(&conn)
+            .destination(dest)?
             .path("/org/qemu/Display1")?
             .build()
             .await?
