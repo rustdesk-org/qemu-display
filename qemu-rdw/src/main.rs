@@ -24,6 +24,12 @@ struct App {
     inner: Arc<Inner>,
 }
 
+#[derive(Debug, Default)]
+struct AppOptions {
+    vm_name: Option<String>,
+    list: bool,
+}
+
 impl App {
     fn new() -> Self {
         let app = gtk::Application::new(Some("org.qemu.rdw.demo"), ApplicationFlags::NON_UNIQUE);
@@ -32,8 +38,16 @@ impl App {
             glib::Char(0),
             glib::OptionFlags::NONE,
             glib::OptionArg::StringArray,
-            "VM-NAME",
-            Some("VM name"),
+            "VM name",
+            Some("VM-NAME"),
+        );
+        app.add_main_option(
+            "list",
+            glib::Char(0),
+            glib::OptionFlags::NONE,
+            glib::OptionArg::None,
+            "List available VM names",
+            None,
         );
         app.add_main_option(
             "version",
@@ -44,17 +58,20 @@ impl App {
             None,
         );
 
-        let opt_name: Arc<RefCell<Option<String>>> = Default::default();
-        let name = opt_name.clone();
+        let opt: Arc<RefCell<AppOptions>> = Default::default();
+        let opt_clone = opt.clone();
         app.connect_handle_local_options(move |_, opt| {
+            let mut app_opt = opt_clone.borrow_mut();
             if opt.lookup_value("version", None).is_some() {
                 println!("Version: {}", env!("CARGO_PKG_VERSION"));
                 return 0;
             }
-            name.replace(
+            if opt.lookup_value("list", None).is_some() {
+                app_opt.list = true;
+            }
+            app_opt.vm_name =
                 opt.lookup_value(&glib::OPTION_REMAINING, None)
-                    .and_then(|args| args.child_value(0).get::<String>()),
-            );
+                    .and_then(|args| args.child_value(0).get::<String>());
             -1
         });
 
@@ -73,6 +90,7 @@ impl App {
         };
 
         let app_clone = app.clone();
+        let opt_clone = opt.clone();
         app.inner.app.connect_activate(move |app| {
             let ui_src = include_str!("main.ui");
             let builder = gtk::Builder::new();
@@ -84,9 +102,18 @@ impl App {
             window.set_application(Some(app));
 
             let app_clone = app_clone.clone();
-            let opt_name = opt_name.clone();
+            let opt_clone = opt_clone.clone();
             MainContext::default().spawn_local(async move {
-                let name = if let Some(name) = opt_name.borrow().as_ref() {
+                // let opt = opt_clone.borrow();
+                if opt_clone.borrow().list {
+                    let list = Display::by_name(app_clone.connection()).await.unwrap();
+                    for (name, dest) in list {
+                        println!("{} (at {})", name, dest);
+                    }
+                    app_clone.inner.app.quit();
+                    return;
+                }
+                let dest = if let Some(name) = opt_clone.borrow().vm_name.as_ref() {
                     let list = Display::by_name(app_clone.connection()).await.unwrap();
                     Some(
                         list.get(name)
@@ -96,7 +123,7 @@ impl App {
                 } else {
                     None
                 };
-                let display = Display::new(app_clone.connection(), name.as_ref())
+                let display = Display::new(app_clone.connection(), dest.as_ref())
                     .await
                     .unwrap();
 
