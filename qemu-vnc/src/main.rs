@@ -1,20 +1,22 @@
-use std::iter::FromIterator;
-use std::net::{TcpListener, TcpStream};
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
-use std::{collections::HashSet, convert::TryInto};
-use std::{error::Error, thread::JoinHandle};
-use std::{io, thread, time};
+use std::{
+    borrow::Borrow,
+    collections::HashSet,
+    error::Error,
+    io,
+    iter::FromIterator,
+    net::{TcpListener, TcpStream},
+    sync::{mpsc, Arc, Mutex},
+    thread, time,
+};
 
 use clap::Clap;
 use image::GenericImage;
 use keycodemap::*;
-use qemu_display::{Console, ConsoleEvent, MouseButton, VMProxy};
+use qemu_display::{AsyncVMProxy, Console, ConsoleListenerHandler, MouseButton};
 use vnc::{
-    server::Event as VncEvent, server::FramebufferUpdate, Encoding, Error as VncError, PixelFormat,
-    Rect, Screen, Server as VncServer,
+    server::{Event as VncEvent, FramebufferUpdate},
+    Encoding, Error as VncError, PixelFormat, Rect, Screen, Server as VncServer,
 };
-use zbus::Connection;
 
 #[derive(Clap, Debug)]
 pub struct SocketAddrArgs {
@@ -234,9 +236,58 @@ impl Client {
 }
 
 #[derive(Debug)]
+struct ConsoleListener {
+    server: Server,
+}
+
+#[async_trait::async_trait]
+impl ConsoleListenerHandler for ConsoleListener {
+    async fn scanout(&mut self, s: qemu_display::Scanout) {
+        let mut inner = self.server.inner.lock().unwrap();
+        inner.image = image_from_vec(s.format, s.width, s.height, s.stride, s.data);
+    }
+
+    async fn update(&mut self, u: qemu_display::Update) {
+        let mut inner = self.server.inner.lock().unwrap();
+        let update = image_from_vec(u.format, u.w as _, u.h as _, u.stride, u.data);
+        if (u.x, u.y) == (0, 0) && update.dimensions() == inner.image.dimensions() {
+            inner.image = update;
+        } else {
+            inner.image.copy_from(&update, u.x as _, u.y as _).unwrap();
+        }
+        let rect = Rect {
+            left: u.x as _,
+            top: u.y as _,
+            width: u.w as _,
+            height: u.h as _,
+        };
+        inner.tx.send(Event::ConsoleUpdate(rect)).unwrap();
+    }
+
+    async fn scanout_dmabuf(&mut self, _scanout: qemu_display::ScanoutDMABUF) {
+        unimplemented!()
+    }
+
+    async fn update_dmabuf(&mut self, _update: qemu_display::UpdateDMABUF) {
+        unimplemented!()
+    }
+
+    async fn mouse_set(&mut self, set: qemu_display::MouseSet) {
+        dbg!(set);
+    }
+
+    async fn cursor_define(&mut self, cursor: qemu_display::Cursor) {
+        dbg!(cursor);
+    }
+
+    fn disconnected(&mut self) {
+        dbg!();
+    }
+}
+
+#[derive(Debug)]
 struct ServerInner {
     console: Console,
-    console_thread: Option<JoinHandle<()>>,
     image: BgraImage,
     tx: mpsc::Sender<Event>,
 }
@@ -257,76 +308,24 @@ impl Server {
         Ok(Self {
             vm_name,
             rx: Arc::new(Mutex::new(rx)),
-            inner: Arc::new(Mutex::new(ServerInner {
-                console,
-                console_thread: None,
-                image,
-                tx,
-            })),
+            inner: Arc::new(Mutex::new(ServerInner { console, image, tx })),
         })
     }
 
     fn stop_console(&self) -> Result<(), Box<dyn Error>> {
         let mut inner = self.inner.lock().unwrap();
-        if let Some(_thread) = inner.console_thread.take() {
-            todo!("join console thread");
-            //thread.join().unwrap();
-        }
+        inner.console.unregister_listener();
         Ok(())
     }
 
     async fn run_console(&self) -> Result<(), Box<dyn Error>> {
         let mut inner = self.inner.lock().unwrap();
-        if inner.console_thread.is_some() {
-            return Ok(());
-        }
-
-        let server = self.clone();
-        let (console_rx, _ack) = inner.console.listen().await?;
-
-        let thread = thread::spawn(move || loop {
-            match console_rx.recv().unwrap() {
-                ConsoleEvent::ScanoutDMABUF(_) | ConsoleEvent::UpdateDMABUF { .. } => {
-                    unimplemented!();
-                }
-                ConsoleEvent::Scanout(s) => {
-                    let mut inner = server.inner.lock().unwrap();
-                    inner.image = image_from_vec(s.format, s.width, s.height, s.stride, s.data);
-                }
-                ConsoleEvent::Update(u) => {
-                    let mut inner = server.inner.lock().unwrap();
-                    let update = image_from_vec(
-                        u.format,
-                        u.w.try_into().unwrap(),
-                        u.h.try_into().unwrap(),
-                        u.stride,
-                        u.data,
-                    );
-                    if (u.x, u.y) == (0, 0) && update.dimensions() == inner.image.dimensions() {
-                        inner.image = update;
-                    } else {
-                        inner
-                            .image
-                            .copy_from(&update, u.x.try_into().unwrap(), u.y.try_into().unwrap())
-                            .unwrap();
-                    }
-                    let rect = Rect {
-                        left: u.x.try_into().unwrap(),
-                        top: u.y.try_into().unwrap(),
-                        width: u.w.try_into().unwrap(),
-                        height: u.h.try_into().unwrap(),
-                    };
-                    inner.tx.send(Event::ConsoleUpdate(rect)).unwrap();
-                }
-                ConsoleEvent::CursorDefine { .. } => {}
-                ConsoleEvent::MouseSet(_) => {}
-                e => {
-                    dbg!(e);
-                }
-            }
-        });
-
-        inner.console_thread = Some(thread);
+        inner
+            .console
+            .register_listener(ConsoleListener {
+                server: self.clone(),
+            })
+            .await?;
         Ok(())
     }
 
@@ -471,13 +470,15 @@ async fn run() -> Result<(), Box<dyn Error>> {
 
     let listener = TcpListener::bind::<std::net::SocketAddr>(args.address.into()).unwrap();
     let dbus = if let Some(addr) = args.dbus_address {
-        Connection::new_for_address(&addr, true)
+        zbus::ConnectionBuilder::address(addr.borrow())?
+            .build()
+            .await
     } else {
-        Connection::new_session()
+        zbus::Connection::session().await
     }
     .expect("Failed to connect to DBus");
 
-    let vm_name = VMProxy::new(&dbus)?.name()?;
+    let vm_name = AsyncVMProxy::new(&dbus).await?.name().await?;
 
     let console = Console::new(&dbus.into(), 0)
         .await

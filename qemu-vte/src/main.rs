@@ -1,11 +1,10 @@
 use futures::prelude::*;
 use glib::{clone, MainContext};
+use gtk::{gio, glib};
 use qemu_display::Chardev;
-use std::os::unix::io::AsRawFd;
-use std::os::unix::net::UnixStream;
-use vte::prelude::*;
-use vte::{gio, glib, gtk};
-use zbus::azync::Connection;
+use std::os::unix::{io::AsRawFd, net::UnixStream};
+use vte::{gtk, prelude::*};
+use zbus::Connection;
 
 fn main() {
     pretty_env_logger::init();

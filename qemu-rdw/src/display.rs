@@ -1,15 +1,15 @@
+use futures_util::StreamExt;
 use glib::{clone, subclass::prelude::*, MainContext};
-use gtk::{glib, prelude::*};
-use once_cell::sync::OnceCell;
-
+use gtk::glib;
 use keycodemap::KEYMAP_XORGEVDEV2QNUM;
-use qemu_display::Console;
-use rdw::DisplayExt;
+use once_cell::sync::OnceCell;
+use qemu_display::{Console, ConsoleListenerHandler};
+use rdw::{gtk, DisplayExt};
+use std::os::unix::io::IntoRawFd;
 
 mod imp {
     use super::*;
     use gtk::subclass::prelude::*;
-    use std::{convert::TryInto, os::unix::io::IntoRawFd};
 
     #[repr(C)]
     pub struct RdwDisplayQemuClass {
@@ -136,22 +136,17 @@ mod imp {
             MainContext::default().spawn_local(clone!(@weak widget => async move {
                 let self_ = Self::from_instance(&widget);
                 let console = self_.console.get().unwrap();
-
-                let (rx, wait_tx) = console
-                    .glib_listen()
-                    .await
-                    .expect("Failed to listen to the console");
-                rx.attach(
-                    None,
-                    clone!(@weak widget => @default-panic, move |evt| {
-                        use qemu_display::ConsoleEvent::*;
-
-                        log::debug!("Console event: {:?}", evt);
-                        match evt {
+                // we have to use a channel, because widget is not Send..
+                let (sender, mut receiver) = futures::channel::mpsc::unbounded();
+                console.register_listener(ConsoleHandler { sender }).await.unwrap();
+                MainContext::default().spawn_local(clone!(@weak widget => async move {
+                    while let Some(e) = receiver.next().await {
+                        use ConsoleEvent::*;
+                        match e {
                             Scanout(s) => {
                                 if s.format != 0x20020888 {
                                     log::warn!("Format not yet supported: {:X}", s.format);
-                                    return Continue(true);
+                                    continue;
                                 }
                                 widget.set_display_size(Some((s.width as _, s.height as _)));
                                 widget.update_area(0, 0, s.width as _, s.height as _, s.stride as _, &s.data);
@@ -159,7 +154,7 @@ mod imp {
                             Update(u) => {
                                 if u.format != 0x20020888 {
                                     log::warn!("Format not yet supported: {:X}", u.format);
-                                    return Continue(true);
+                                    continue;
                                 }
                                 widget.update_area(u.x as _, u.y as _, u.w as _, u.h as _, u.stride as _, &u.data);
                             }
@@ -175,19 +170,20 @@ mod imp {
                                     fd: s.into_raw_fd(),
                                 });
                             }
-                            UpdateDMABUF { .. } => {
+                            UpdateDMABUF { wait_tx, .. } => {
                                 widget.render();
                                 let _ = wait_tx.send(());
                             }
                             Disconnected => {
+                                log::warn!("Console disconnected");
                             }
-                            CursorDefine { width, height, hot_x, hot_y, data }=> {
+                            CursorDefine(c) => {
                                 let cursor = rdw::Display::make_cursor(
-                                    &data,
-                                    width,
-                                    height,
-                                    hot_x,
-                                    hot_y,
+                                    &c.data,
+                                    c.width,
+                                    c.height,
+                                    c.hot_x,
+                                    c.hot_y,
                                     1,
                                 );
                                 widget.define_cursor(Some(cursor));
@@ -200,41 +196,21 @@ mod imp {
                                 }
                             }
                         }
-                        Continue(true)
-                    })
-                );
-
-                let mut abs_changed = console.mouse.receive_is_absolute_changed().await;
-                MainContext::default().spawn_local(clone!(@weak widget => async move {
-                    use futures_util::StreamExt;
-
-                    while let Some(abs) = abs_changed.next().await {
-                        let abs = if let Some(abs) = abs {
-                            abs.try_into().unwrap_or(false)
-                        } else {
-                            continue;
-                        };
-                        widget.set_mouse_absolute(abs);
                     }
                 }));
-
-                loop {
-                    if let Err(e) = console.dispatch_signals().await {
-                        log::warn!("Console dispatching error: {}", e);
-                        break;
+                let mut abs_changed = console.mouse.receive_is_absolute_changed().await;
+                MainContext::default().spawn_local(clone!(@weak widget => async move {
+                    while let Some(abs) = abs_changed.next().await {
+                        if let Some(abs) = abs {
+                            widget.set_mouse_absolute(abs);
+                        }
                     }
-                }
+                }));
             }));
         }
     }
 
     impl rdw::DisplayImpl for Display {}
-
-    impl Display {
-        pub(crate) fn set_console(&self, console: Console) {
-            self.console.set(console).unwrap();
-        }
-    }
 }
 
 glib::wrapper! {
@@ -245,13 +221,74 @@ impl Display {
     pub fn new(console: Console) -> Self {
         let obj = glib::Object::new::<Self>(&[]).unwrap();
         let self_ = imp::Display::from_instance(&obj);
-        self_.set_console(console);
+        self_.console.set(console).unwrap();
         obj
     }
 
     pub(crate) fn console(&self) -> &Console {
         let self_ = imp::Display::from_instance(self);
         self_.console.get().unwrap()
+    }
+}
+
+#[derive(Debug)]
+enum ConsoleEvent {
+    Scanout(qemu_display::Scanout),
+    Update(qemu_display::Update),
+    ScanoutDMABUF(qemu_display::ScanoutDMABUF),
+    UpdateDMABUF {
+        _update: qemu_display::UpdateDMABUF,
+        wait_tx: futures::channel::oneshot::Sender<()>,
+    },
+    MouseSet(qemu_display::MouseSet),
+    CursorDefine(qemu_display::Cursor),
+    Disconnected,
+}
+
+struct ConsoleHandler {
+    sender: futures::channel::mpsc::UnboundedSender<ConsoleEvent>,
+}
+
+impl ConsoleHandler {
+    fn send(&self, event: ConsoleEvent) {
+        if let Err(e) = self.sender.unbounded_send(event) {
+            log::warn!("failed to send console event: {}", e);
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ConsoleListenerHandler for ConsoleHandler {
+    async fn scanout(&mut self, scanout: qemu_display::Scanout) {
+        self.send(ConsoleEvent::Scanout(scanout));
+    }
+
+    async fn update(&mut self, update: qemu_display::Update) {
+        self.send(ConsoleEvent::Update(update));
+    }
+
+    async fn scanout_dmabuf(&mut self, scanout: qemu_display::ScanoutDMABUF) {
+        self.send(ConsoleEvent::ScanoutDMABUF(scanout));
+    }
+
+    async fn update_dmabuf(&mut self, _update: qemu_display::UpdateDMABUF) {
+        let (wait_tx, wait_rx) = futures::channel::oneshot::channel();
+        self.send(ConsoleEvent::UpdateDMABUF { _update, wait_tx });
+        if let Err(e) = wait_rx.await {
+            log::warn!("wait update dmabuf failed: {}", e);
+        }
+    }
+
+    async fn mouse_set(&mut self, set: qemu_display::MouseSet) {
+        self.send(ConsoleEvent::MouseSet(set));
+    }
+
+    async fn cursor_define(&mut self, cursor: qemu_display::Cursor) {
+        self.send(ConsoleEvent::CursorDefine(cursor));
+    }
+
+    fn disconnected(&mut self) {
+        self.send(ConsoleEvent::Disconnected);
     }
 }
 

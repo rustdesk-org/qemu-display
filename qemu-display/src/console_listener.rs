@@ -1,14 +1,9 @@
-use once_cell::sync::OnceCell;
-use std::ops::Drop;
-use std::os::unix::io::IntoRawFd;
-use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::mpsc::{Receiver, RecvError, SendError};
-use std::sync::{Arc, Mutex};
-
 use derivative::Derivative;
+use std::{
+    ops::Drop,
+    os::unix::io::{AsRawFd, IntoRawFd, RawFd},
+};
 use zbus::{dbus_interface, zvariant::Fd};
-
-use crate::EventSender;
 
 #[derive(Derivative)]
 #[derivative(Debug)]
@@ -45,6 +40,17 @@ pub struct ScanoutDMABUF {
     pub y0_top: bool,
 }
 
+#[derive(Derivative)]
+#[derivative(Debug)]
+pub struct Cursor {
+    pub width: i32,
+    pub height: i32,
+    pub hot_x: i32,
+    pub hot_y: i32,
+    #[derivative(Debug = "ignore")]
+    pub data: Vec<u8>,
+}
+
 impl Drop for ScanoutDMABUF {
     fn drop(&mut self) {
         if self.fd >= 0 {
@@ -68,39 +74,39 @@ pub struct MouseSet {
     pub on: i32,
 }
 
-// TODO: replace events mpsc with async traits
-#[derive(Debug)]
-pub enum ConsoleEvent {
-    Scanout(Scanout),
-    Update(Update),
-    ScanoutDMABUF(ScanoutDMABUF),
-    UpdateDMABUF {
-        x: i32,
-        y: i32,
-        w: i32,
-        h: i32,
-    },
-    MouseSet(MouseSet),
-    CursorDefine {
-        width: i32,
-        height: i32,
-        hot_x: i32,
-        hot_y: i32,
-        data: Vec<u8>,
-    },
-    Disconnected,
+#[derive(Debug, Copy, Clone)]
+pub struct UpdateDMABUF {
+    pub x: i32,
+    pub y: i32,
+    pub w: i32,
+    pub h: i32,
+}
+
+#[async_trait::async_trait]
+pub trait ConsoleListenerHandler: 'static + Send + Sync {
+    async fn scanout(&mut self, scanout: Scanout);
+
+    async fn update(&mut self, update: Update);
+
+    async fn scanout_dmabuf(&mut self, scanout: ScanoutDMABUF);
+
+    async fn update_dmabuf(&mut self, update: UpdateDMABUF);
+
+    async fn mouse_set(&mut self, set: MouseSet);
+
+    async fn cursor_define(&mut self, cursor: Cursor);
+
+    fn disconnected(&mut self);
 }
 
 #[derive(Debug)]
-pub(crate) struct ConsoleListener<E: EventSender<Event = ConsoleEvent>> {
-    tx: E,
-    wait_rx: Mutex<Receiver<()>>,
-    err: Arc<OnceCell<SendError<ConsoleEvent>>>,
+pub(crate) struct ConsoleListener<H: ConsoleListenerHandler> {
+    handler: H,
 }
 
 #[dbus_interface(name = "org.qemu.Display1.Listener")]
-impl<E: 'static + EventSender<Event = ConsoleEvent>> ConsoleListener<E> {
-    fn scanout(
+impl<H: ConsoleListenerHandler> ConsoleListener<H> {
+    async fn scanout(
         &mut self,
         width: u32,
         height: u32,
@@ -108,16 +114,18 @@ impl<E: 'static + EventSender<Event = ConsoleEvent>> ConsoleListener<E> {
         format: u32,
         data: serde_bytes::ByteBuf,
     ) {
-        self.send(ConsoleEvent::Scanout(Scanout {
-            width,
-            height,
-            stride,
-            format,
-            data: data.into_vec(),
-        }))
+        self.handler
+            .scanout(Scanout {
+                width,
+                height,
+                stride,
+                format,
+                data: data.into_vec(),
+            })
+            .await;
     }
 
-    fn update(
+    async fn update(
         &mut self,
         x: i32,
         y: i32,
@@ -127,19 +135,21 @@ impl<E: 'static + EventSender<Event = ConsoleEvent>> ConsoleListener<E> {
         format: u32,
         data: serde_bytes::ByteBuf,
     ) {
-        self.send(ConsoleEvent::Update(Update {
-            x,
-            y,
-            w,
-            h,
-            stride,
-            format,
-            data: data.into_vec(),
-        }))
+        self.handler
+            .update(Update {
+                x,
+                y,
+                w,
+                h,
+                stride,
+                format,
+                data: data.into_vec(),
+            })
+            .await;
     }
 
     #[dbus_interface(name = "ScanoutDMABUF")]
-    fn scanout_dmabuf(
+    async fn scanout_dmabuf(
         &mut self,
         fd: Fd,
         width: u32,
@@ -150,66 +160,58 @@ impl<E: 'static + EventSender<Event = ConsoleEvent>> ConsoleListener<E> {
         y0_top: bool,
     ) {
         let fd = unsafe { libc::dup(fd.as_raw_fd()) };
-        self.send(ConsoleEvent::ScanoutDMABUF(ScanoutDMABUF {
-            fd,
-            width,
-            height,
-            stride,
-            fourcc,
-            modifier,
-            y0_top,
-        }))
+        self.handler
+            .scanout_dmabuf(ScanoutDMABUF {
+                fd,
+                width,
+                height,
+                stride,
+                fourcc,
+                modifier,
+                y0_top,
+            })
+            .await;
     }
 
     #[dbus_interface(name = "UpdateDMABUF")]
-    fn update_dmabuf(&mut self, x: i32, y: i32, w: i32, h: i32) {
-        self.send(ConsoleEvent::UpdateDMABUF { x, y, w, h });
-        if let Err(e) = self.wait() {
-            eprintln!("update returned error: {}", e)
-        }
+    async fn update_dmabuf(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        self.handler
+            .update_dmabuf(UpdateDMABUF { x, y, w, h })
+            .await;
     }
 
-    fn mouse_set(&mut self, x: i32, y: i32, on: i32) {
-        self.send(ConsoleEvent::MouseSet(MouseSet { x, y, on }))
+    async fn mouse_set(&mut self, x: i32, y: i32, on: i32) {
+        self.handler.mouse_set(MouseSet { x, y, on }).await;
     }
 
-    fn cursor_define(&mut self, width: i32, height: i32, hot_x: i32, hot_y: i32, data: Vec<u8>) {
-        self.send(ConsoleEvent::CursorDefine {
-            width,
-            height,
-            hot_x,
-            hot_y,
-            data,
-        })
-    }
-}
-
-impl<E: EventSender<Event = ConsoleEvent>> ConsoleListener<E> {
-    pub(crate) fn new(tx: E, wait_rx: Receiver<()>) -> Self {
-        ConsoleListener {
-            tx,
-            wait_rx: Mutex::new(wait_rx),
-            err: Default::default(),
-        }
-    }
-
-    fn send(&mut self, event: ConsoleEvent) {
-        if let Err(e) = self.tx.send_event(event) {
-            let _ = self.err.set(e);
-        }
-    }
-
-    fn wait(&mut self) -> Result<(), RecvError> {
-        self.wait_rx.lock().unwrap().recv()
-    }
-
-    pub fn err(&self) -> Arc<OnceCell<SendError<ConsoleEvent>>> {
-        self.err.clone()
+    async fn cursor_define(
+        &mut self,
+        width: i32,
+        height: i32,
+        hot_x: i32,
+        hot_y: i32,
+        data: Vec<u8>,
+    ) {
+        self.handler
+            .cursor_define(Cursor {
+                width,
+                height,
+                hot_x,
+                hot_y,
+                data,
+            })
+            .await;
     }
 }
 
-impl<E: EventSender<Event = ConsoleEvent>> Drop for ConsoleListener<E> {
+impl<H: ConsoleListenerHandler> ConsoleListener<H> {
+    pub(crate) fn new(handler: H) -> Self {
+        Self { handler }
+    }
+}
+
+impl<H: ConsoleListenerHandler> Drop for ConsoleListener<H> {
     fn drop(&mut self) {
-        self.send(ConsoleEvent::Disconnected)
+        self.handler.disconnected();
     }
 }

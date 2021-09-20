@@ -1,6 +1,7 @@
 use glib::{clone, MainContext};
 use gtk::{glib, prelude::*};
 use qemu_display::UsbRedir;
+use rdw::gtk;
 
 #[derive(Clone, Debug)]
 pub struct Handler {
@@ -30,7 +31,7 @@ impl Handler {
         let usbredir = self.usbredir.clone();
         widget.connect_device_state_set(move |widget, item, state| {
             let device = match item.device() {
-                Some(it) => it.clone(),
+                Some(it) => it,
                 _ => return,
             };
 

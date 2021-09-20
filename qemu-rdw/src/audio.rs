@@ -1,60 +1,57 @@
-use std::error::Error;
-use std::result::Result;
-use std::thread;
+use std::{error::Error, result::Result};
 
-use qemu_display::Audio;
+use qemu_display::{Audio, AudioOutHandler};
+
+#[derive(Debug)]
+pub struct Handler {
+    #[allow(unused)]
+    audio: Audio,
+}
 
 #[derive(Debug, Default)]
-pub struct Handler {
-    thread: Option<thread::JoinHandle<()>>,
+pub struct OutListener {
+    gst: rdw::GstAudio,
+}
+
+#[async_trait::async_trait]
+impl AudioOutHandler for OutListener {
+    async fn init(&mut self, id: u64, info: qemu_display::PCMInfo) {
+        if let Err(e) = self.gst.init_out(id, &info.gst_caps()) {
+            log::warn!("Failed to initialize audio stream: {}", e);
+        }
+    }
+
+    async fn fini(&mut self, id: u64) {
+        self.gst.fini_out(id);
+    }
+
+    async fn set_enabled(&mut self, id: u64, enabled: bool) {
+        if let Err(e) = self.gst.set_enabled_out(id, enabled) {
+            log::warn!("Failed to set enabled audio stream: {}", e);
+        }
+    }
+
+    async fn set_volume(&mut self, id: u64, volume: qemu_display::Volume) {
+        if let Err(e) = self.gst.set_volume_out(
+            id,
+            volume.mute,
+            volume.volume.first().map(|v| *v as f64 / 255f64),
+        ) {
+            log::warn!("Failed to set volume: {}", e);
+        }
+    }
+
+    async fn write(&mut self, id: u64, data: Vec<u8>) {
+        if let Err(e) = self.gst.write_out(id, data) {
+            log::warn!("Failed to output stream: {}", e);
+        }
+    }
 }
 
 impl Handler {
-    pub async fn new(audio: Audio) -> Result<Self, Box<dyn Error>> {
-        let rx = audio.listen_out().await?;
-        let mut gst = rdw::GstAudio::new()?;
-
-        let thread = thread::spawn(move || loop {
-            match rx.recv() {
-                Ok(event) => {
-                    use qemu_display::AudioOutEvent::*;
-
-                    match event {
-                        Init { id, info } => {
-                            if let Err(e) = gst.init_out(id, &info.gst_caps()) {
-                                log::warn!("Failed to initialize audio stream: {}", e);
-                            }
-                        }
-                        Fini { id } => {
-                            gst.fini_out(id);
-                        }
-                        SetEnabled { id, enabled } => {
-                            if let Err(e) = gst.set_enabled_out(id, enabled) {
-                                log::warn!("Failed to set enabled audio stream: {}", e);
-                            }
-                        }
-                        SetVolume { id, volume } => {
-                            if let Err(e) = gst.set_volume_out(
-                                id,
-                                volume.mute,
-                                volume.volume.first().map(|v| *v as f64 / 255f64),
-                            ) {
-                                log::warn!("Failed to set volume: {}", e);
-                            }
-                        }
-                        Write { id, data } => {
-                            if let Err(e) = gst.write_out(id, data) {
-                                log::warn!("Failed to output stream: {}", e);
-                            }
-                        }
-                    }
-                }
-                Err(e) => log::warn!("Audio thread error: {}", e),
-            }
-        });
-
-        Ok(Self {
-            thread: Some(thread),
-        })
+    pub async fn new(mut audio: Audio) -> Result<Handler, Box<dyn Error>> {
+        let gst = rdw::GstAudio::new()?;
+        audio.register_out_listener(OutListener { gst }).await?;
+        Ok(Handler { audio })
     }
 }

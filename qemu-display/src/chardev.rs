@@ -1,6 +1,8 @@
 use std::convert::TryFrom;
-use zbus::dbus_proxy;
-use zbus::zvariant::{Fd, ObjectPath};
+use zbus::{
+    dbus_proxy,
+    zvariant::{Fd, ObjectPath},
+};
 
 use crate::Result;
 
@@ -36,7 +38,7 @@ pub struct Chardev {
 }
 
 impl Chardev {
-    pub async fn new(conn: &zbus::azync::Connection, id: &str) -> Result<Self> {
+    pub async fn new(conn: &zbus::Connection, id: &str) -> Result<Self> {
         let obj_path = ObjectPath::try_from(format!("/org/qemu/Display1/Chardev_{}", id))?;
         let proxy = AsyncChardevProxy::builder(conn)
             .path(&obj_path)?

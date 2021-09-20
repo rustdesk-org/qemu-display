@@ -1,145 +1,195 @@
-use std::cell::Cell;
-use std::error::Error;
-use std::rc::Rc;
-use std::result::Result;
-
-use crate::glib::{self, clone, prelude::*, SignalHandlerId, SourceId};
-use gtk::{gdk, gio, prelude::DisplayExt, prelude::*};
-use qemu_display::{
-    self as qdl, AsyncClipboardProxy, Clipboard, ClipboardEvent, ClipboardSelection,
+use std::{
+    error::Error,
+    result::Result,
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
 };
+
+use glib::{clone, SignalHandlerId};
+use gtk::{
+    gdk, gio, glib,
+    prelude::{DisplayExt, *},
+};
+use qemu_display::{AsyncClipboardProxy, Clipboard, ClipboardHandler, ClipboardSelection};
+use rdw::gtk;
 
 #[derive(Debug)]
 pub struct Handler {
-    rx: SourceId,
+    #[allow(unused)]
+    clipboard: Clipboard,
     cb_handler: Option<SignalHandlerId>,
     cb_primary_handler: Option<SignalHandlerId>,
 }
 
-impl Handler {
-    pub async fn new(ctxt: Clipboard) -> Result<Self, Box<dyn Error>> {
-        let rx = ctxt
-            .glib_listen()
-            .await
-            .expect("Failed to listen to the clipboard");
-        let proxy = ctxt.proxy.clone();
-        let serials = Rc::new([Cell::new(0), Cell::new(0)]);
-        let current_serials = serials.clone();
-        let rx = rx.attach(None, move |evt| {
-            use ClipboardEvent::*;
+#[derive(Debug)]
+struct InnerHandler {
+    proxy: AsyncClipboardProxy<'static>,
+    serials: Arc<[AtomicU32; 2]>,
+}
 
-            log::debug!("Clipboard event: {:?}", evt);
-            match evt {
-                Register | Unregister => {
-                    current_serials[0].set(0);
-                    current_serials[1].set(0);
-                }
-                Grab {
-                    selection,
-                    serial,
-                    mimes,
-                } => {
-                    if let Some((clipboard, idx)) = clipboard_from_selection(selection) {
-                        if serial < current_serials[idx].get() {
-                            log::debug!("Ignored peer grab: {} < {}", serial, current_serials[idx].get());
-                            return Continue(true);
-                        }
+impl InnerHandler {
+    fn reset_serials(&mut self) {
+        self.serials[0].store(0, Ordering::SeqCst);
+        self.serials[1].store(0, Ordering::SeqCst);
+    }
+}
 
-                        current_serials[idx].set(serial);
-                        let m: Vec<_> = mimes.iter().map(|s|s.as_str()).collect();
-                        let p = proxy.clone();
-                        let content = rdw::ContentProvider::new(&m, move |mime, stream, prio| {
-                            log::debug!("content-provider-write: {:?}", (mime, stream));
+#[async_trait::async_trait]
+impl ClipboardHandler for InnerHandler {
+    async fn register(&mut self) {
+        self.reset_serials();
+    }
 
-                            let p = p.clone();
-                            let mime = mime.to_string();
-                            Some(Box::pin(clone!(@strong stream => @default-return panic!(), async move {
-                                match p.request(selection, &[&mime]).await {
-                                    Ok((_, data)) => {
-                                        let bytes = glib::Bytes::from(&data);
-                                        stream.write_bytes_async_future(&bytes, prio).await.map(|_| ())
-                                    }
-                                    Err(e) => {
-                                        let err = format!("failed to request clipboard data: {}", e);
-                                        log::warn!("{}", err);
-                                        Err(glib::Error::new(gio::IOErrorEnum::Failed, &err))
-                                    }
-                                }
-                            })))
-                        });
+    async fn unregister(&mut self) {
+        self.reset_serials();
+    }
 
-                        if let Err(e) = clipboard.set_content(Some(&content)) {
-                            log::warn!("Failed to set clipboard grab: {}", e);
-                        }
-                    }
-                }
-                Release { selection } => {
-                    if let Some((clipboard, _)) = clipboard_from_selection(selection) {
-                        // TODO: track if the outside/app changed the clipboard
-                        if let Err(e) = clipboard.set_content(gdk::NONE_CONTENT_PROVIDER) {
-                            log::warn!("Failed to release clipboard: {}", e);
-                        }
-                    }
-                }
-                Request { selection, mimes, tx } => {
-                    if let Some((clipboard, _)) = clipboard_from_selection(selection) {
-                        glib::MainContext::default().spawn_local(async move {
-                            let m: Vec<_> = mimes.iter().map(|s|s.as_str()).collect();
-                            let res = clipboard.read_async_future(&m, glib::Priority::default()).await;
-                            log::debug!("clipboard-read: {}", res.is_ok());
-                            let reply = match res {
-                                Ok((stream, mime)) => {
-                                    let out = gio::MemoryOutputStream::new_resizable();
-                                    let res = out.splice_async_future(
-                                        &stream,
-                                        gio::OutputStreamSpliceFlags::CLOSE_SOURCE | gio::OutputStreamSpliceFlags::CLOSE_TARGET,
-                                        glib::Priority::default()).await;
-                                    match res {
-                                        Ok(_) => {
-                                            let data = out.steal_as_bytes();
-                                            Ok((mime.to_string(), data.as_ref().to_vec()))
-                                        }
-                                        Err(e) => {
-                                            Err(qdl::Error::Failed(format!("{}", e)))
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    Err(qdl::Error::Failed(format!("{}", e)))
-                                }
-                            };
-                            let _ = tx.lock().unwrap().send(reply);
-                        });
-                    }
-                }
+    async fn grab(&mut self, selection: ClipboardSelection, serial: u32, mimes: Vec<String>) {
+        if let Some((clipboard, idx)) = clipboard_from_selection(selection) {
+            let cur_serial = self.serials[idx].load(Ordering::SeqCst);
+            if serial < cur_serial {
+                log::debug!("Ignored peer grab: {} < {}", serial, cur_serial);
+                return;
             }
-            Continue(true)
-        });
 
+            self.serials[idx].store(serial, Ordering::SeqCst);
+            let m: Vec<_> = mimes.iter().map(|s| s.as_str()).collect();
+            let p = self.proxy.clone();
+            let content = rdw::ContentProvider::new(&m, move |mime, stream, prio| {
+                log::debug!("content-provider-write: {:?}", (mime, stream));
+
+                let p = p.clone();
+                let mime = mime.to_string();
+                Some(Box::pin(
+                    clone!(@strong stream => @default-return panic!(), async move {
+                        match p.request(selection, &[&mime]).await {
+                            Ok((_, data)) => {
+                                let bytes = glib::Bytes::from(&data);
+                                stream.write_bytes_async_future(&bytes, prio).await.map(|_| ())
+                            }
+                            Err(e) => {
+                                let err = format!("failed to request clipboard data: {}", e);
+                                log::warn!("{}", err);
+                                Err(glib::Error::new(gio::IOErrorEnum::Failed, &err))
+                            }
+                        }
+                    }),
+                ))
+            });
+
+            if let Err(e) = clipboard.set_content(Some(&content)) {
+                log::warn!("Failed to set clipboard grab: {}", e);
+            }
+        }
+    }
+
+    async fn release(&mut self, selection: ClipboardSelection) {
+        if let Some((clipboard, _)) = clipboard_from_selection(selection) {
+            // TODO: track if the outside/app changed the clipboard
+            if let Err(e) = clipboard.set_content(gdk::NONE_CONTENT_PROVIDER) {
+                log::warn!("Failed to release clipboard: {}", e);
+            }
+        }
+    }
+
+    async fn request(
+        &mut self,
+        selection: ClipboardSelection,
+        mimes: Vec<String>,
+    ) -> qemu_display::Result<(String, Vec<u8>)> {
+        // we have to spawn a local future, because clipboard is not Send
+        let (sender, receiver) = futures::channel::oneshot::channel();
+        glib::MainContext::default().spawn_local(async move {
+            let res = if let Some((clipboard, _)) = clipboard_from_selection(selection) {
+                let m: Vec<_> = mimes.iter().map(|s| s.as_str()).collect();
+                let res = clipboard
+                    .read_async_future(&m, glib::Priority::default())
+                    .await;
+                log::debug!("clipboard-read: {}", res.is_ok());
+                match res {
+                    Ok((stream, mime)) => {
+                        let out = gio::MemoryOutputStream::new_resizable();
+                        let res = out
+                            .splice_async_future(
+                                &stream,
+                                gio::OutputStreamSpliceFlags::CLOSE_SOURCE
+                                    | gio::OutputStreamSpliceFlags::CLOSE_TARGET,
+                                glib::Priority::default(),
+                            )
+                            .await;
+                        match res {
+                            Ok(_) => {
+                                let data = out.steal_as_bytes();
+                                Ok((mime.to_string(), data.as_ref().to_vec()))
+                            }
+                            Err(e) => Err(qemu_display::Error::Failed(format!("{}", e))),
+                        }
+                    }
+                    Err(e) => Err(qemu_display::Error::Failed(format!("{}", e))),
+                }
+            } else {
+                Err(qemu_display::Error::Failed(
+                    "Clipboard request failed".into(),
+                ))
+            };
+            sender.send(res).unwrap()
+        });
+        match receiver.await {
+            Ok(res) => res,
+            Err(e) => Err(qemu_display::Error::Failed(format!(
+                "Clipboard request failed: {}",
+                e
+            ))),
+        }
+    }
+}
+
+impl Handler {
+    pub async fn new(clipboard: Clipboard) -> Result<Handler, Box<dyn Error>> {
+        let proxy = clipboard.proxy.clone();
+        let serials = Arc::new([AtomicU32::new(0), AtomicU32::new(0)]);
         let cb_handler = watch_clipboard(
-            ctxt.proxy.clone(),
+            clipboard.proxy.clone(),
             ClipboardSelection::Clipboard,
             serials.clone(),
         );
         let cb_primary_handler = watch_clipboard(
-            ctxt.proxy.clone(),
+            clipboard.proxy.clone(),
             ClipboardSelection::Primary,
             serials.clone(),
         );
-
-        ctxt.register().await?;
-        Ok(Self {
-            rx,
+        clipboard.register(InnerHandler { proxy, serials }).await?;
+        Ok(Handler {
+            clipboard,
             cb_handler,
             cb_primary_handler,
         })
     }
 }
 
+impl Drop for Handler {
+    fn drop(&mut self) {
+        if let Some(id) = self.cb_primary_handler.take() {
+            clipboard_from_selection(ClipboardSelection::Primary)
+                .unwrap()
+                .0
+                .disconnect(id);
+        }
+        if let Some(id) = self.cb_handler.take() {
+            clipboard_from_selection(ClipboardSelection::Clipboard)
+                .unwrap()
+                .0
+                .disconnect(id);
+        }
+    }
+}
+
 fn watch_clipboard(
     proxy: AsyncClipboardProxy<'static>,
     selection: ClipboardSelection,
-    serials: Rc<[Cell<u32>; 2]>,
+    serials: Arc<[AtomicU32; 2]>,
 ) -> Option<SignalHandlerId> {
     let (clipboard, idx) = match clipboard_from_selection(selection) {
         Some(it) => it,
@@ -161,9 +211,9 @@ fn watch_clipboard(
                     let _ = proxy.release(selection).await;
                 } else {
                     let mimes: Vec<_> = types.iter().map(|s| s.as_str()).collect();
-                    let ser = serials[idx].get();
+                    let ser = serials[idx].load(Ordering::SeqCst);
                     let _ = proxy.grab(selection, ser, &mimes).await;
-                    serials[idx].set(ser + 1);
+                    serials[idx].store(ser + 1, Ordering::SeqCst);
                 }
             });
         }

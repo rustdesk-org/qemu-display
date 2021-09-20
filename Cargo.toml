@@ -11,18 +11,8 @@ members = [
 default-members = ["qemu-rdw"]
 
 [patch.crates-io]
-vnc = { git = 'https://github.com/elmarco/rust-vnc', branch = 'server' }
-usbredirhost = { path = "../usbredir-rs/usbredirhost" }
-libusb1-sys = { path = "../rusb/libusb1-sys" }
-rusb = { path = "../rusb" }
-zbus = { path = "../zbus/zbus" }
-zvariant = { path = "../zbus/zvariant" }
-
-[patch."https://gitlab.gnome.org/malureau/rdw.git"]
-rdw = { path = '../rdw/rdw' }
-
-[patch."https://github.com/gtk-rs/gtk4-rs"]
-gdk4-wayland = { path = '../gtk4-rs/gdk4-wayland' }
-gdk4-x11 = { path = '../gtk4-rs/gdk4-x11' }
-gtk4 = { path = '../gtk4-rs/gtk4' }
-gtk4-sys = { path = '../gtk4-rs/gtk4/sys' }
+vnc = { git = "https://github.com/elmarco/rust-vnc", branch = "server" }
+zbus = { git = "https://gitlab.freedesktop.org/dbus/zbus.git" }
+zvariant = { git = "https://gitlab.freedesktop.org/dbus/zbus.git" }
+#zbus = { path = "../zbus/zbus" }
+#zvariant = { path = "../zbus/zvariant" }

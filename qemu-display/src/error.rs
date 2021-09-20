@@ -1,9 +1,6 @@
 use usbredirhost::rusb;
 
-use std::convert::Infallible;
-use std::error;
-use std::fmt;
-use std::io;
+use std::{convert::Infallible, error, fmt, io};
 
 #[derive(Debug)]
 pub enum Error {

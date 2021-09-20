@@ -3,9 +3,6 @@
 mod error;
 pub use error::*;
 
-mod event_sender;
-use event_sender::*;
-
 mod vm;
 pub use vm::*;
 

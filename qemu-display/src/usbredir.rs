@@ -23,9 +23,9 @@ use crate::{Chardev, Error, Result};
 
 #[derive(Debug)]
 struct InnerHandler {
+    #[allow(unused)] // keep the device opened, as rusb doesn't take it
     device_fd: Option<zvariant::OwnedFd>,
     stream: UnixStream,
-    stream_thread: JoinHandle<()>,
     ctxt: rusb::Context,
     ctxt_thread: Option<JoinHandle<()>>,
     event: (UnixStream, UnixStream),
@@ -90,7 +90,7 @@ impl Handler {
             Ok(it) => (it, None),
             Err(rusb::Error::Access) => {
                 let (bus, dev) = (device.bus_number(), device.address());
-                let sysbus = zbus::azync::Connection::system().await?;
+                let sysbus = zbus::Connection::system().await?;
                 let fd = AsyncSystemHelperProxy::new(&sysbus)
                     .await?
                     .open_bus_dev(bus, dev)
@@ -110,7 +110,7 @@ impl Handler {
         // really annoying libusb/usbredir APIs...
         let event = UnixStream::pair()?;
         let event_fd = event.1.as_raw_fd();
-        let stream_thread = std::thread::spawn(move || loop {
+        std::thread::spawn(move || loop {
             let ret = fd_poll_readable(stream_fd, Some(event_fd));
             c.interrupt_handle_events();
             if ret.is_err() {
@@ -122,7 +122,6 @@ impl Handler {
             inner: Arc::new(Mutex::new(InnerHandler {
                 device_fd,
                 stream,
-                stream_thread,
                 event,
                 quit: false,
                 ctxt: ctxt.clone(),
@@ -162,7 +161,7 @@ impl Drop for Handler {
         inner.quit = true;
         inner.ctxt.interrupt_handle_events();
         // stream will be dropped and stream_thread will kick context_thread
-        inner.event.0.write(&[0]).unwrap();
+        inner.event.0.write_all(&[0]).unwrap();
     }
 }
 
@@ -234,24 +233,30 @@ impl UsbRedir {
     ) -> Result<bool> {
         let mut inner = self.inner.borrow_mut();
         let key = Key::from_device(device);
+        let handled = inner.handlers.contains_key(&key);
+        // We should do better and watch for owner properties changes, but this would require tasks
+        // anticipate result
         let mut nfree = inner.n_available_chardev().await as _;
 
-        if state {
-            if !inner.handlers.contains_key(&key) {
+        match (state, handled) {
+            (true, false) => {
                 let chardev = inner
                     .first_available_chardev()
                     .await
                     .ok_or_else(|| Error::Failed("There are no free USB channels".into()))?;
                 let handler = Handler::new(device, chardev).await?;
                 inner.handlers.insert(key, handler);
+                nfree -= 1;
             }
-            nfree -= 1;
-        } else {
-            inner.handlers.remove(&key);
-            nfree += 1;
+            (false, true) => {
+                inner.handlers.remove(&key);
+                nfree += 1;
+            }
+            _ => {
+                return Ok(state);
+            }
         }
 
-        // We should do better and watch for owner properties changes, but this would require tasks
         let _ = inner.channel.0.broadcast(Event::NFreeChannels(nfree)).await;
 
         Ok(state)

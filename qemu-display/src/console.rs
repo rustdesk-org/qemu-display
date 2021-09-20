@@ -1,16 +1,15 @@
-use std::convert::TryFrom;
-use std::os::unix::net::UnixStream;
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Mutex;
-use std::{os::unix::io::AsRawFd, thread};
-
+use std::{
+    cell::RefCell,
+    convert::TryFrom,
+    os::unix::{io::AsRawFd, net::UnixStream},
+};
 use zbus::{
     dbus_proxy,
     zvariant::{Fd, ObjectPath},
+    Connection,
 };
 
-use crate::Result;
-use crate::{AsyncKeyboardProxy, AsyncMouseProxy, ConsoleEvent, ConsoleListener};
+use crate::{AsyncKeyboardProxy, AsyncMouseProxy, ConsoleListener, ConsoleListenerHandler, Result};
 
 #[dbus_proxy(default_service = "org.qemu", interface = "org.qemu.Display1.Console")]
 pub trait Console {
@@ -54,10 +53,11 @@ pub struct Console {
     pub keyboard: AsyncKeyboardProxy<'static>,
     #[derivative(Debug = "ignore")]
     pub mouse: AsyncMouseProxy<'static>,
+    listener: RefCell<Option<Connection>>,
 }
 
 impl Console {
-    pub async fn new(conn: &zbus::azync::Connection, idx: u32) -> Result<Self> {
+    pub async fn new(conn: &Connection, idx: u32) -> Result<Self> {
         let obj_path = ObjectPath::try_from(format!("/org/qemu/Display1/Console_{}", idx))?;
         let proxy = AsyncConsoleProxy::builder(conn)
             .path(&obj_path)?
@@ -75,28 +75,8 @@ impl Console {
             proxy,
             keyboard,
             mouse,
+            listener: RefCell::new(None),
         })
-    }
-
-    pub async fn dispatch_signals(&self) -> Result<()> {
-        use futures_util::{future::FutureExt, select};
-
-        if let Some(msg) = select!(
-            msg = self.proxy.next_signal().fuse() => {
-                msg?
-            },
-            msg = self.keyboard.next_signal().fuse() => {
-                msg?
-            },
-            msg = self.mouse.next_signal().fuse() => {
-                msg?
-            }
-        ) {
-            if msg.primary_header().msg_type() == zbus::MessageType::Signal {
-                log::debug!("Ignoring {:?}", msg);
-            }
-        }
-        Ok(())
     }
 
     pub async fn label(&self) -> Result<String> {
@@ -111,66 +91,25 @@ impl Console {
         Ok(self.proxy.height().await?)
     }
 
-    pub async fn listen(&self) -> Result<(Receiver<ConsoleEvent>, Sender<()>)> {
+    pub async fn register_listener<H: ConsoleListenerHandler>(&self, handler: H) -> Result<()> {
         let (p0, p1) = UnixStream::pair()?;
-        let (tx, rx) = mpsc::channel();
         self.proxy.register_listener(p0.as_raw_fd().into()).await?;
-
-        let (wait_tx, wait_rx) = mpsc::channel();
-        let _thread = thread::spawn(move || {
-            let c = zbus::ConnectionBuilder::unix_stream(p1)
-                .p2p()
-                .build()
+        let c = zbus::ConnectionBuilder::unix_stream(p1)
+            .p2p()
+            .build()
+            .await?;
+        {
+            let mut server = c.object_server_mut().await;
+            server
+                .at("/org/qemu/Display1/Listener", ConsoleListener::new(handler))
                 .unwrap();
-            let mut s = zbus::ObjectServer::new(&c);
-            let listener = ConsoleListener::new(Mutex::new(tx), wait_rx);
-            let err = listener.err();
-            s.at("/org/qemu/Display1/Listener", listener).unwrap();
-            loop {
-                if let Err(e) = s.try_handle_next() {
-                    eprintln!("Listener DBus error: {}", e);
-                    return;
-                }
-                if let Some(e) = err.get() {
-                    eprintln!("Listener channel error: {}", e);
-                    return;
-                }
-            }
-        });
-
-        Ok((rx, wait_tx))
+            server.start_dispatch();
+        }
+        self.listener.replace(Some(c));
+        Ok(())
     }
-}
 
-#[cfg(feature = "glib")]
-impl Console {
-    pub async fn glib_listen(&self) -> Result<(glib::Receiver<ConsoleEvent>, Sender<()>)> {
-        let (p0, p1) = UnixStream::pair()?;
-        let (tx, rx) = glib::MainContext::channel(glib::source::Priority::default());
-        self.proxy.register_listener(p0.as_raw_fd().into()).await?;
-
-        let (wait_tx, wait_rx) = mpsc::channel();
-        let _thread = thread::spawn(move || {
-            let c = zbus::ConnectionBuilder::unix_stream(p1)
-                .p2p()
-                .build()
-                .unwrap();
-            let mut s = zbus::ObjectServer::new(&c);
-            let listener = ConsoleListener::new(tx, wait_rx);
-            let err = listener.err();
-            s.at("/org/qemu/Display1/Listener", listener).unwrap();
-            loop {
-                if let Err(e) = s.try_handle_next() {
-                    eprintln!("Listener DBus error: {}", e);
-                    break;
-                }
-                if let Some(e) = err.get() {
-                    eprintln!("Listener channel error: {}", e);
-                    break;
-                }
-            }
-        });
-
-        Ok((rx, wait_tx))
+    pub fn unregister_listener(&mut self) {
+        self.listener.replace(None);
     }
 }
