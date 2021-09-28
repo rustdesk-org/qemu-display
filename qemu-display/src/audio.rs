@@ -256,4 +256,27 @@ impl Audio {
         self.out_listener.replace(c);
         Ok(())
     }
+
+    pub async fn register_in_listener<H: AudioInHandler>(&mut self, handler: H) -> Result<()> {
+        let (p0, p1) = UnixStream::pair()?;
+        self.proxy
+            .register_in_listener(p0.as_raw_fd().into())
+            .await?;
+        let c = zbus::ConnectionBuilder::unix_stream(p1)
+            .p2p()
+            .build()
+            .await?;
+        {
+            let mut server = c.object_server_mut().await;
+            server
+                .at(
+                    "/org/qemu/Display1/AudioInListener",
+                    AudioInListener { handler },
+                )
+                .unwrap();
+            server.start_dispatch();
+        }
+        self.in_listener.replace(c);
+        Ok(())
+    }
 }

@@ -16,3 +16,4 @@ zbus = { git = "https://gitlab.freedesktop.org/dbus/zbus.git" }
 zvariant = { git = "https://gitlab.freedesktop.org/dbus/zbus.git" }
 #zbus = { path = "../zbus/zbus" }
 #zvariant = { path = "../zbus/zvariant" }
+rdw4 = { path = "../rdw/rdw4" }
