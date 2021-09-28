@@ -34,16 +34,13 @@ pub trait Chardev {
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
 pub struct Chardev {
-    pub proxy: AsyncChardevProxy<'static>,
+    pub proxy: ChardevProxy<'static>,
 }
 
 impl Chardev {
     pub async fn new(conn: &zbus::Connection, id: &str) -> Result<Self> {
         let obj_path = ObjectPath::try_from(format!("/org/qemu/Display1/Chardev_{}", id))?;
-        let proxy = AsyncChardevProxy::builder(conn)
-            .path(&obj_path)?
-            .build()
-            .await?;
+        let proxy = ChardevProxy::builder(conn).path(&obj_path)?.build().await?;
         Ok(Self { proxy })
     }
 }

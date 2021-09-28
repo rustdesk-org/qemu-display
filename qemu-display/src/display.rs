@@ -11,7 +11,7 @@ use zbus::{
 };
 use zvariant::OwnedObjectPath;
 
-use crate::{AsyncVMProxy, Audio, Chardev, Clipboard, Error, Result, UsbRedir};
+use crate::{Audio, Chardev, Clipboard, Error, Result, UsbRedir, VMProxy};
 
 pub struct Display {
     conn: Connection,
@@ -21,7 +21,7 @@ pub struct Display {
 impl Display {
     pub async fn by_name(conn: &Connection) -> Result<HashMap<String, OwnedUniqueName>> {
         let mut hm = HashMap::new();
-        let list = match fdo::AsyncDBusProxy::new(conn)
+        let list = match fdo::DBusProxy::new(conn)
             .await?
             .list_queued_owners(WellKnownName::from_str_unchecked("org.qemu"))
             .await
@@ -31,7 +31,7 @@ impl Display {
             Err(e) => return Err(e.into()),
         };
         for dest in list.into_iter() {
-            let name = AsyncVMProxy::builder(conn)
+            let name = VMProxy::builder(conn)
                 .destination(UniqueName::from(&dest))?
                 .build()
                 .await?
@@ -52,7 +52,7 @@ impl Display {
         } else {
             "org.qemu".try_into().unwrap()
         };
-        let objects = fdo::AsyncObjectManagerProxy::builder(conn)
+        let objects = fdo::ObjectManagerProxy::builder(conn)
             .destination(dest)?
             .path("/org/qemu/Display1")?
             .build()

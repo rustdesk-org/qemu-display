@@ -91,7 +91,7 @@ impl Handler {
             Err(rusb::Error::Access) => {
                 let (bus, dev) = (device.bus_number(), device.address());
                 let sysbus = zbus::Connection::system().await?;
-                let fd = AsyncSystemHelperProxy::new(&sysbus)
+                let fd = SystemHelperProxy::new(&sysbus)
                     .await?
                     .open_bus_dev(bus, dev)
                     .await?;

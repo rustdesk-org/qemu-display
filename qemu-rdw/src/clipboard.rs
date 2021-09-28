@@ -12,7 +12,7 @@ use gtk::{
     gdk, gio, glib,
     prelude::{DisplayExt, *},
 };
-use qemu_display::{AsyncClipboardProxy, Clipboard, ClipboardHandler, ClipboardSelection};
+use qemu_display::{Clipboard, ClipboardHandler, ClipboardProxy, ClipboardSelection};
 use rdw::gtk;
 
 #[derive(Debug)]
@@ -25,7 +25,7 @@ pub struct Handler {
 
 #[derive(Debug)]
 struct InnerHandler {
-    proxy: AsyncClipboardProxy<'static>,
+    proxy: ClipboardProxy<'static>,
     serials: Arc<[AtomicU32; 2]>,
 }
 
@@ -187,7 +187,7 @@ impl Drop for Handler {
 }
 
 fn watch_clipboard(
-    proxy: AsyncClipboardProxy<'static>,
+    proxy: ClipboardProxy<'static>,
     selection: ClipboardSelection,
     serials: Arc<[AtomicU32; 2]>,
 ) -> Option<SignalHandlerId> {

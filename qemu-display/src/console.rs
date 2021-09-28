@@ -9,7 +9,7 @@ use zbus::{
     Connection,
 };
 
-use crate::{AsyncKeyboardProxy, AsyncMouseProxy, ConsoleListener, ConsoleListenerHandler, Result};
+use crate::{ConsoleListener, ConsoleListenerHandler, KeyboardProxy, MouseProxy, Result};
 
 #[dbus_proxy(default_service = "org.qemu", interface = "org.qemu.Display1.Console")]
 pub trait Console {
@@ -48,29 +48,23 @@ pub trait Console {
 #[derivative(Debug)]
 pub struct Console {
     #[derivative(Debug = "ignore")]
-    pub proxy: AsyncConsoleProxy<'static>,
+    pub proxy: ConsoleProxy<'static>,
     #[derivative(Debug = "ignore")]
-    pub keyboard: AsyncKeyboardProxy<'static>,
+    pub keyboard: KeyboardProxy<'static>,
     #[derivative(Debug = "ignore")]
-    pub mouse: AsyncMouseProxy<'static>,
+    pub mouse: MouseProxy<'static>,
     listener: RefCell<Option<Connection>>,
 }
 
 impl Console {
     pub async fn new(conn: &Connection, idx: u32) -> Result<Self> {
         let obj_path = ObjectPath::try_from(format!("/org/qemu/Display1/Console_{}", idx))?;
-        let proxy = AsyncConsoleProxy::builder(conn)
+        let proxy = ConsoleProxy::builder(conn).path(&obj_path)?.build().await?;
+        let keyboard = KeyboardProxy::builder(conn)
             .path(&obj_path)?
             .build()
             .await?;
-        let keyboard = AsyncKeyboardProxy::builder(conn)
-            .path(&obj_path)?
-            .build()
-            .await?;
-        let mouse = AsyncMouseProxy::builder(conn)
-            .path(&obj_path)?
-            .build()
-            .await?;
+        let mouse = MouseProxy::builder(conn).path(&obj_path)?.build().await?;
         Ok(Self {
             proxy,
             keyboard,

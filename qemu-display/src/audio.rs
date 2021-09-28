@@ -61,7 +61,7 @@ trait Audio {
 #[derivative(Debug)]
 pub struct Audio {
     #[derivative(Debug = "ignore")]
-    pub proxy: AsyncAudioProxy<'static>,
+    pub proxy: AudioProxy<'static>,
     out_listener: Option<Connection>,
     in_listener: Option<Connection>,
 }
@@ -226,7 +226,7 @@ impl<H: AudioInHandler> AudioInListener<H> {
 
 impl Audio {
     pub async fn new(conn: &zbus::Connection) -> Result<Self> {
-        let proxy = AsyncAudioProxy::new(conn).await?;
+        let proxy = AudioProxy::new(conn).await?;
         Ok(Self {
             proxy,
             in_listener: None,

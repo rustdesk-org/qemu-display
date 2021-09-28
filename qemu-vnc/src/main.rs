@@ -12,7 +12,7 @@ use std::{
 use clap::Clap;
 use image::GenericImage;
 use keycodemap::*;
-use qemu_display::{AsyncVMProxy, Console, ConsoleListenerHandler, MouseButton};
+use qemu_display::{Console, ConsoleListenerHandler, MouseButton, VMProxy};
 use vnc::{
     server::{Event as VncEvent, FramebufferUpdate},
     Encoding, Error as VncError, PixelFormat, Rect, Screen, Server as VncServer,
@@ -478,7 +478,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     }
     .expect("Failed to connect to DBus");
 
-    let vm_name = AsyncVMProxy::new(&dbus).await?.name().await?;
+    let vm_name = VMProxy::new(&dbus).await?.name().await?;
 
     let console = Console::new(&dbus.into(), 0)
         .await

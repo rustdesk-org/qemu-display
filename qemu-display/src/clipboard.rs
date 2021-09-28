@@ -90,14 +90,14 @@ impl<H: ClipboardHandler> ClipboardListener<H> {
 #[derivative(Debug)]
 pub struct Clipboard {
     #[derivative(Debug = "ignore")]
-    pub proxy: AsyncClipboardProxy<'static>,
+    pub proxy: ClipboardProxy<'static>,
     conn: zbus::Connection,
 }
 
 impl Clipboard {
     pub async fn new(conn: &zbus::Connection) -> Result<Self> {
         let obj_path = ObjectPath::try_from("/org/qemu/Display1/Clipboard").unwrap();
-        let proxy = AsyncClipboardProxy::builder(conn)
+        let proxy = ClipboardProxy::builder(conn)
             .path(&obj_path)?
             .build()
             .await?;
