@@ -10,7 +10,7 @@ edition = "2018"
 log = "0.4"
 pretty_env_logger = "0.4"
 once_cell = "1.5"
-zbus = { version = "2.0.0-beta" }
+zbus = { version = "2.0.0-beta.7" }
 qemu-display = { path = "../qemu-display" }
 keycodemap = { path = "../keycodemap" }
 rdw = { package = "rdw4", version = "0.1.0" }

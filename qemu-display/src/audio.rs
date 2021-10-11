@@ -241,18 +241,12 @@ impl Audio {
             .await?;
         let c = zbus::ConnectionBuilder::unix_stream(p1)
             .p2p()
+            .serve_at(
+                "/org/qemu/Display1/AudioOutListener",
+                AudioOutListener { handler },
+            )?
             .build()
             .await?;
-        {
-            let mut server = c.object_server_mut().await;
-            server
-                .at(
-                    "/org/qemu/Display1/AudioOutListener",
-                    AudioOutListener { handler },
-                )
-                .unwrap();
-            server.start_dispatch();
-        }
         self.out_listener.replace(c);
         Ok(())
     }
@@ -264,18 +258,12 @@ impl Audio {
             .await?;
         let c = zbus::ConnectionBuilder::unix_stream(p1)
             .p2p()
+            .serve_at(
+                "/org/qemu/Display1/AudioInListener",
+                AudioInListener { handler },
+            )?
             .build()
             .await?;
-        {
-            let mut server = c.object_server_mut().await;
-            server
-                .at(
-                    "/org/qemu/Display1/AudioInListener",
-                    AudioInListener { handler },
-                )
-                .unwrap();
-            server.start_dispatch();
-        }
         self.in_listener.replace(c);
         Ok(())
     }

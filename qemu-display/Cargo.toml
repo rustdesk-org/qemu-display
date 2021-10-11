@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 log = "0.4"
 derivative = "2.2.0"
-zbus = { version = "2.0.0-beta", features = ["xml"] }
+zbus = { version = "2.0.0-beta.7", features = ["xml"] }
 zvariant = { version = "2.4.0", features = ["serde_bytes"] }
 libc = "0.2.86"
 enumflags2 = { version = "0.6.4", features = ["serde"] }

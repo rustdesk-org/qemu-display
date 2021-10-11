@@ -90,15 +90,9 @@ impl Console {
         self.proxy.register_listener(p0.as_raw_fd().into()).await?;
         let c = zbus::ConnectionBuilder::unix_stream(p1)
             .p2p()
+            .serve_at("/org/qemu/Display1/Listener", ConsoleListener::new(handler))?
             .build()
             .await?;
-        {
-            let mut server = c.object_server_mut().await;
-            server
-                .at("/org/qemu/Display1/Listener", ConsoleListener::new(handler))
-                .unwrap();
-            server.start_dispatch();
-        }
         self.listener.replace(Some(c));
         Ok(())
     }

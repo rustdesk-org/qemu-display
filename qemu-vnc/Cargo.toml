@@ -11,7 +11,7 @@ qemu-display = { path = "../qemu-display" }
 keycodemap = { path ="../keycodemap" }
 vnc = "0.4.0"
 clap = "3.0.0-beta.2"
-zbus = { version = "2.0.0-beta" }
+zbus = { version = "2.0.0-beta.7" }
 libc = "0.2.86"
 image = "0.23.14"
 derivative = "2.2.0"
