@@ -1,7 +1,7 @@
 use async_broadcast::{broadcast, Receiver, Sender};
+use async_lock::RwLock;
 use futures::Stream;
 use std::{
-    cell::RefCell,
     collections::HashMap,
     default::Default,
     io::{Read, Write},
@@ -210,7 +210,7 @@ impl Inner {
 
 #[derive(Clone, Debug)]
 pub struct UsbRedir {
-    inner: Arc<RefCell<Inner>>,
+    inner: Arc<RwLock<Inner>>,
 }
 
 impl UsbRedir {
@@ -218,7 +218,7 @@ impl UsbRedir {
         let mut channel = broadcast(1);
         channel.0.set_overflow(true);
         Self {
-            inner: Arc::new(RefCell::new(Inner {
+            inner: Arc::new(RwLock::new(Inner {
                 chardevs,
                 channel,
                 handlers: Default::default(),
@@ -231,7 +231,7 @@ impl UsbRedir {
         device: &rusb::Device<rusb::Context>,
         state: bool,
     ) -> Result<bool> {
-        let mut inner = self.inner.borrow_mut();
+        let mut inner = self.inner.write().await;
         let key = Key::from_device(device);
         let handled = inner.handlers.contains_key(&key);
         // We should do better and watch for owner properties changes, but this would require tasks
@@ -262,19 +262,23 @@ impl UsbRedir {
         Ok(state)
     }
 
-    pub fn is_device_connected(&self, device: &rusb::Device<rusb::Context>) -> bool {
-        let inner = self.inner.borrow();
+    pub async fn is_device_connected(&self, device: &rusb::Device<rusb::Context>) -> bool {
+        let inner = self.inner.read().await;
 
         inner.handlers.contains_key(&Key::from_device(device))
     }
 
     pub async fn n_free_channels(&self) -> i32 {
-        self.inner.borrow().n_available_chardev().await as _
+        let inner = self.inner.read().await;
+
+        inner.n_available_chardev().await as _
     }
 
-    pub fn receive_n_free_channels(&self) -> Pin<Box<dyn Stream<Item = i32>>> {
+    pub async fn receive_n_free_channels(&self) -> Pin<Box<dyn Stream<Item = i32>>> {
+        let inner = self.inner.read().await;
+
         Box::pin(NFreeChannelsStream {
-            receiver: self.inner.borrow().channel.1.clone(),
+            receiver: inner.channel.1.clone(),
         })
     }
 }

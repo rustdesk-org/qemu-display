@@ -20,12 +20,15 @@ impl Handler {
         widget
             .model()
             .connect_items_changed(clone!(@weak widget => move |model, pos, _rm, add| {
-                for pos in pos..pos + add {
-                    let item = model.item(pos).unwrap();
-                    if let Some(dev) = item.downcast_ref::<rdw::UsbDevice>().unwrap().device() {
-                        item.set_property("active", usbredir.is_device_connected(&dev)).unwrap();
+                let usbredir = usbredir.clone();
+                MainContext::default().spawn_local(clone!(@weak model => async move {
+                    for pos in pos..pos + add {
+                        let item = model.item(pos).unwrap();
+                        if let Some(dev) = item.downcast_ref::<rdw::UsbDevice>().unwrap().device() {
+                            item.set_property("active", usbredir.is_device_connected(&dev).await).unwrap();
+                        }
                     }
-                }
+                }));
             }));
 
         let usbredir = self.usbredir.clone();
@@ -55,7 +58,7 @@ impl Handler {
             widget
                 .set_property("free-channels", usbredir.n_free_channels().await)
                 .unwrap();
-            let mut n = usbredir.receive_n_free_channels();
+            let mut n = usbredir.receive_n_free_channels().await;
             while let Some(n) = n.next().await {
                 widget.set_property("free-channels", n).unwrap();
             }
