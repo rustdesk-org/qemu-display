@@ -13,7 +13,7 @@ mod imp {
 
     #[repr(C)]
     pub struct RdwDisplayQemuClass {
-        pub parent_class: rdw::imp::RdwDisplayClass,
+        pub parent_class: rdw::RdwDisplayClass,
     }
 
     unsafe impl ClassStruct for RdwDisplayQemuClass {
@@ -22,7 +22,7 @@ mod imp {
 
     #[repr(C)]
     pub struct RdwDisplayQemu {
-        parent: rdw::imp::RdwDisplay,
+        parent: rdw::RdwDisplay,
     }
 
     impl std::fmt::Debug for RdwDisplayQemu {
@@ -160,7 +160,7 @@ mod imp {
                             }
                             ScanoutDMABUF(s) => {
                                 widget.set_display_size(Some((s.width as _, s.height as _)));
-                                widget.set_dmabuf_scanout(rdw::DmabufScanout {
+                                widget.set_dmabuf_scanout(rdw::RdwDmabufScanout {
                                     width: s.width,
                                     height: s.height,
                                     stride: s.stride,
