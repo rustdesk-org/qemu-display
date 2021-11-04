@@ -25,6 +25,7 @@ struct App {
 #[derive(Debug, Default)]
 struct AppOptions {
     vm_name: Option<String>,
+    address: Option<String>,
     list: bool,
 }
 
@@ -38,6 +39,14 @@ impl App {
             glib::OptionArg::StringArray,
             "VM name",
             Some("VM-NAME"),
+        );
+        app.add_main_option(
+            "address",
+            glib::Char(b'a' as _),
+            glib::OptionFlags::NONE,
+            glib::OptionArg::String,
+            "D-Bus bus address",
+            None,
         );
         app.add_main_option(
             "list",
@@ -63,6 +72,9 @@ impl App {
             if opt.lookup_value("version", None).is_some() {
                 println!("Version: {}", env!("CARGO_PKG_VERSION"));
                 return 0;
+            }
+            if let Some(arg) = opt.lookup_value("address", None) {
+                app_opt.address = arg.get::<String>();
             }
             if opt.lookup_value("list", None).is_some() {
                 app_opt.list = true;
@@ -96,7 +108,12 @@ impl App {
             let app_clone = app_clone.clone();
             let opt_clone = opt.clone();
             MainContext::default().spawn_local(async move {
-                let conn = zbus::ConnectionBuilder::session()
+                let builder = if let Some(addr) = &opt_clone.borrow().address {
+                    zbus::ConnectionBuilder::address(addr.as_str())
+                } else {
+                    zbus::ConnectionBuilder::session()
+                };
+                let conn = builder
                     .unwrap()
                     .internal_executor(false)
                     .build()
