@@ -201,7 +201,7 @@ mod imp {
                 let mut abs_changed = console.mouse.receive_is_absolute_changed().await;
                 MainContext::default().spawn_local(clone!(@weak widget => async move {
                     while let Some(abs) = abs_changed.next().await {
-                        if let Some(abs) = abs {
+                        if let Ok(abs) = abs.get().await {
                             widget.set_mouse_absolute(abs);
                         }
                     }
