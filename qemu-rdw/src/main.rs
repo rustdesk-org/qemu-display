@@ -27,6 +27,7 @@ struct AppOptions {
     vm_name: Option<String>,
     address: Option<String>,
     list: bool,
+    wait: bool,
 }
 
 impl App {
@@ -57,6 +58,14 @@ impl App {
             None,
         );
         app.add_main_option(
+            "wait",
+            glib::Char(0),
+            glib::OptionFlags::NONE,
+            glib::OptionArg::None,
+            "Wait for display to be available",
+            None,
+        );
+        app.add_main_option(
             "version",
             glib::Char(0),
             glib::OptionFlags::NONE,
@@ -78,6 +87,9 @@ impl App {
             }
             if opt.lookup_value("list", None).is_some() {
                 app_opt.list = true;
+            }
+            if opt.lookup_value("wait", None).is_some() {
+                app_opt.wait = true;
             }
             app_opt.vm_name = opt
                 .lookup_value(&glib::OPTION_REMAINING, None)
@@ -135,15 +147,11 @@ impl App {
                     app_clone.inner.app.quit();
                     return;
                 }
-                let dest = if let Some(name) = opt_clone.borrow().vm_name.as_ref() {
-                    let list = Display::by_name(&conn).await.unwrap();
-                    Some(
-                        list.get(name)
-                            .unwrap_or_else(|| panic!("Can't find VM name: {}", name))
-                            .clone(),
-                    )
-                } else {
-                    None
+                let dest = {
+                    let name = opt_clone.borrow().vm_name.clone();
+                    let wait = opt_clone.borrow().wait;
+
+                    Display::lookup(&conn, wait, name.as_deref()).await.unwrap()
                 };
                 let display = Display::new(&conn, dest.as_ref()).await.unwrap();
 

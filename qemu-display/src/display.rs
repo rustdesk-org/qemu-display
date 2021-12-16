@@ -19,6 +19,32 @@ pub struct Display {
 }
 
 impl Display {
+    pub async fn lookup(
+        conn: &Connection,
+        wait: bool,
+        name: Option<&str>,
+    ) -> Result<Option<OwnedUniqueName>> {
+        let mut changed = fdo::DBusProxy::new(conn)
+            .await?
+            .receive_name_owner_changed()
+            .await?;
+        loop {
+            let list = Display::by_name(&conn).await?;
+            if let Some(name) = name {
+                let res = list.get(name);
+                if res.is_some() {
+                    return Ok(res.cloned());
+                }
+            } else if !list.is_empty() {
+                return Ok(None);
+            }
+            if !wait {
+                return Err(Error::Failed("Can't find VM".into()));
+            };
+            let _ = changed.next().await;
+        }
+    }
+
     pub async fn by_name(conn: &Connection) -> Result<HashMap<String, OwnedUniqueName>> {
         let mut hm = HashMap::new();
         let list = match fdo::DBusProxy::new(conn)
