@@ -2,23 +2,30 @@ use futures::stream::{self, StreamExt};
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
+    sync::Arc,
 };
 use zbus::{
     fdo,
     fdo::ManagedObjects,
     names::{BusName, OwnedUniqueName, UniqueName, WellKnownName},
-    Connection,
+    Connection, OwnerChangedStream,
 };
 use zvariant::OwnedObjectPath;
 
 use crate::{Audio, Chardev, Clipboard, Error, Result, UsbRedir, VMProxy};
 
-pub struct Display {
+struct Inner<'d> {
+    proxy: fdo::ObjectManagerProxy<'d>,
     conn: Connection,
     objects: ManagedObjects,
 }
 
-impl Display {
+#[derive(Clone)]
+pub struct Display<'d> {
+    inner: Arc<Inner<'d>>,
+}
+
+impl<'d> Display<'d> {
     pub async fn lookup(
         conn: &Connection,
         wait: bool,
@@ -68,7 +75,7 @@ impl Display {
         Ok(hm)
     }
 
-    pub async fn new<'d, D>(conn: &Connection, dest: Option<D>) -> Result<Self>
+    pub async fn new<D>(conn: &Connection, dest: Option<D>) -> Result<Display<'d>>
     where
         D: TryInto<BusName<'d>>,
         D::Error: Into<Error>,
@@ -78,47 +85,58 @@ impl Display {
         } else {
             "org.qemu".try_into().unwrap()
         };
-        let objects = fdo::ObjectManagerProxy::builder(conn)
+        let proxy = fdo::ObjectManagerProxy::builder(conn)
             .destination(dest)?
             .path("/org/qemu/Display1")?
             .build()
-            .await?
-            .get_managed_objects()
             .await?;
-        // TODO: listen for changes ?
-        Ok(Self {
+        let objects = proxy.get_managed_objects().await?;
+        // TODO: listen for changes
+        let inner = Inner {
+            // owner_changed,
+            proxy,
             conn: conn.clone(),
             objects,
+        };
+
+        Ok(Self {
+            inner: Arc::new(inner),
         })
+    }
+
+    pub async fn receive_owner_changed(&self) -> Result<OwnerChangedStream<'_>> {
+        Ok(self.inner.proxy.receive_owner_changed().await?)
     }
 
     pub async fn audio(&self) -> Result<Option<Audio>> {
         if !self
+            .inner
             .objects
             .contains_key(&OwnedObjectPath::try_from("/org/qemu/Display1/Audio").unwrap())
         {
             return Ok(None);
         }
 
-        Ok(Some(Audio::new(&self.conn).await?))
+        Ok(Some(Audio::new(&self.inner.conn).await?))
     }
 
     pub async fn clipboard(&self) -> Result<Option<Clipboard>> {
         if !self
+            .inner
             .objects
             .contains_key(&OwnedObjectPath::try_from("/org/qemu/Display1/Clipboard").unwrap())
         {
             return Ok(None);
         }
 
-        Ok(Some(Clipboard::new(&self.conn).await?))
+        Ok(Some(Clipboard::new(&self.inner.conn).await?))
     }
 
     pub async fn chardevs(&self) -> Vec<Chardev> {
-        stream::iter(&self.objects)
+        stream::iter(&self.inner.objects)
             .filter_map(|(p, _ifaces)| async move {
                 match p.strip_prefix("/org/qemu/Display1/Chardev_") {
-                    Some(id) => Chardev::new(&self.conn, id).await.ok(),
+                    Some(id) => Chardev::new(&self.inner.conn, id).await.ok(),
                     _ => None,
                 }
             })

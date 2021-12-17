@@ -1,3 +1,4 @@
+use futures_util::StreamExt;
 use gio::ApplicationFlags;
 use glib::MainContext;
 use gtk::{gio, glib, prelude::*};
@@ -153,7 +154,16 @@ impl App {
 
                     Display::lookup(&conn, wait, name.as_deref()).await.unwrap()
                 };
-                let display = Display::new(&conn, dest.as_ref()).await.unwrap();
+
+                let display = Display::new(&conn, dest).await.unwrap();
+
+                let disp = display.clone();
+                MainContext::default().spawn_local(async move {
+                    let mut changed = disp.receive_owner_changed().await.unwrap();
+                    while let Some(name) = changed.next().await {
+                        dbg!(name);
+                    }
+                });
 
                 let console = Console::new(&conn, 0)
                     .await
