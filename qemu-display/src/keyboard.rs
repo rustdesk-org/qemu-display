@@ -1,10 +1,11 @@
-use enumflags2::BitFlags;
+use enumflags2::{bitflags, BitFlags};
 use serde::{Deserialize, Serialize};
 use zbus::dbus_proxy;
-use zvariant::derive::Type;
+use zvariant::Type;
 
+#[bitflags]
 #[repr(u32)]
-#[derive(Type, BitFlags, Debug, PartialEq, Copy, Clone, Serialize, Deserialize)]
+#[derive(Type, Debug, PartialEq, Copy, Clone, Serialize, Deserialize)]
 pub enum KeyboardModifiers {
     Scroll = 0x1,
     Num = 0x2,

@@ -1,6 +1,6 @@
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use zbus::dbus_proxy;
-use zvariant::derive::Type;
+use zvariant::Type;
 
 #[repr(u32)]
 #[derive(Deserialize_repr, Serialize_repr, Type, Debug, Hash, PartialEq, Eq, Clone, Copy)]

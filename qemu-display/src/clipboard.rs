@@ -1,7 +1,7 @@
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::convert::TryFrom;
 use zbus::{dbus_interface, dbus_proxy, zvariant::ObjectPath};
-use zvariant::derive::Type;
+use zvariant::Type;
 
 use crate::Result;
 
@@ -109,12 +109,12 @@ impl Clipboard {
 
     pub async fn register<H: ClipboardHandler>(&self, handler: H) -> Result<()> {
         self.conn
-            .object_server_mut()
-            .await
+            .object_server()
             .at(
                 "/org/qemu/Display1/Clipboard",
                 ClipboardListener { handler },
             )
+            .await
             .unwrap();
         Ok(self.proxy.register().await?)
     }
