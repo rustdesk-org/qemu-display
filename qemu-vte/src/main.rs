@@ -45,7 +45,7 @@ fn main() {
 
                 let mut read = istream.into_async_read().unwrap();
                 term.connect_commit(move |_, text, _| {
-                    let _res = ostream.write(text.as_bytes(), gio::NONE_CANCELLABLE); // TODO cancellable and error
+                    let _res = ostream.write(text.as_bytes(), gio::Cancellable::NONE); // TODO cancellable and error
                 });
 
                 loop {

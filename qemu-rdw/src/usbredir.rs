@@ -25,7 +25,7 @@ impl Handler {
                     for pos in pos..pos + add {
                         let item = model.item(pos).unwrap();
                         if let Some(dev) = item.downcast_ref::<rdw::UsbDevice>().unwrap().device() {
-                            item.set_property("active", usbredir.is_device_connected(&dev).await).unwrap();
+                            item.set_property("active", usbredir.is_device_connected(&dev).await);
                         }
                     }
                 }));
@@ -41,12 +41,12 @@ impl Handler {
             let usbredir = usbredir.clone();
             MainContext::default().spawn_local(clone!(@weak item, @weak widget => async move {
                 match usbredir.set_device_state(&device, state).await {
-                    Ok(active) => item.set_property("active", active).unwrap(),
+                    Ok(active) => item.set_property("active", active),
                     Err(e) => {
                         if state {
-                            item.set_property("active", false).unwrap();
+                            item.set_property("active", false);
                         }
-                        widget.emit_by_name("show-error", &[&e.to_string()]).unwrap();
+                        widget.emit_by_name::<()>("show-error", &[&e.to_string()]);
                     },
                 }
             }));
@@ -56,11 +56,10 @@ impl Handler {
         MainContext::default().spawn_local(clone!(@weak widget => async move {
             use futures::stream::StreamExt; // for `next`
             widget
-                .set_property("free-channels", usbredir.n_free_channels().await)
-                .unwrap();
+                .set_property("free-channels", usbredir.n_free_channels().await);
             let mut n = usbredir.receive_n_free_channels().await;
             while let Some(n) = n.next().await {
-                widget.set_property("free-channels", n).unwrap();
+                widget.set_property("free-channels", n);
             }
         }));
 

@@ -7,10 +7,10 @@ edition = "2018"
 log = "0.4"
 pretty_env_logger = "0.4"
 once_cell = "1.5"
-zbus = { version = "2.0.0-beta.7" }
+zbus = { version = "2.0" }
 qemu-display = { path = "../qemu-display" }
 futures = "0.3.13"
 
 [dependencies.vte]
 package = "vte4"
-version = "0.0.1"
+version = "0.1"

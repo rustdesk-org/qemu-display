@@ -12,6 +12,4 @@ default-members = ["qemu-rdw"]
 
 [patch.crates-io]
 vnc = { git = "https://github.com/elmarco/rust-vnc", branch = "server" }
-zbus = { git = "https://gitlab.freedesktop.org/dbus/zbus.git" }
-zvariant = { git = "https://gitlab.freedesktop.org/dbus/zbus.git" }
 rdw4 = { git = "https://gitlab.gnome.org/malureau/rdw.git" }

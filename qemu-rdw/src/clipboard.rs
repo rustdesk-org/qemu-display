@@ -67,7 +67,7 @@ impl ClipboardHandler for InnerHandler {
                         match p.request(selection, &[&mime]).await {
                             Ok((_, data)) => {
                                 let bytes = glib::Bytes::from(&data);
-                                stream.write_bytes_async_future(&bytes, prio).await.map(|_| ())
+                                stream.write_bytes_future(&bytes, prio).await.map(|_| ())
                             }
                             Err(e) => {
                                 let err = format!("failed to request clipboard data: {}", e);
@@ -88,7 +88,7 @@ impl ClipboardHandler for InnerHandler {
     async fn release(&mut self, selection: ClipboardSelection) {
         if let Some((clipboard, _)) = clipboard_from_selection(selection) {
             // TODO: track if the outside/app changed the clipboard
-            if let Err(e) = clipboard.set_content(gdk::NONE_CONTENT_PROVIDER) {
+            if let Err(e) = clipboard.set_content(gdk::ContentProvider::NONE) {
                 log::warn!("Failed to release clipboard: {}", e);
             }
         }
@@ -104,15 +104,13 @@ impl ClipboardHandler for InnerHandler {
         glib::MainContext::default().spawn_local(async move {
             let res = if let Some((clipboard, _)) = clipboard_from_selection(selection) {
                 let m: Vec<_> = mimes.iter().map(|s| s.as_str()).collect();
-                let res = clipboard
-                    .read_async_future(&m, glib::Priority::default())
-                    .await;
+                let res = clipboard.read_future(&m, glib::Priority::default()).await;
                 log::debug!("clipboard-read: {}", res.is_ok());
                 match res {
                     Ok((stream, mime)) => {
                         let out = gio::MemoryOutputStream::new_resizable();
                         let res = out
-                            .splice_async_future(
+                            .splice_future(
                                 &stream,
                                 gio::OutputStreamSpliceFlags::CLOSE_SOURCE
                                     | gio::OutputStreamSpliceFlags::CLOSE_TARGET,
@@ -201,22 +199,21 @@ fn watch_clipboard(
             return;
         }
 
-        if let Some(formats) = clipboard.formats() {
-            let types = formats.mime_types();
-            log::debug!(">clipboard-changed({:?}): {:?}", selection, types);
-            let proxy = proxy.clone();
-            let serials = serials.clone();
-            glib::MainContext::default().spawn_local(async move {
-                if types.is_empty() {
-                    let _ = proxy.release(selection).await;
-                } else {
-                    let mimes: Vec<_> = types.iter().map(|s| s.as_str()).collect();
-                    let ser = serials[idx].load(Ordering::SeqCst);
-                    let _ = proxy.grab(selection, ser, &mimes).await;
-                    serials[idx].store(ser + 1, Ordering::SeqCst);
-                }
-            });
-        }
+        let formats = clipboard.formats();
+        let types = formats.mime_types();
+        log::debug!(">clipboard-changed({:?}): {:?}", selection, types);
+        let proxy = proxy.clone();
+        let serials = serials.clone();
+        glib::MainContext::default().spawn_local(async move {
+            if types.is_empty() {
+                let _ = proxy.release(selection).await;
+            } else {
+                let mimes: Vec<_> = types.iter().map(|s| s.as_str()).collect();
+                let ser = serials[idx].load(Ordering::SeqCst);
+                let _ = proxy.grab(selection, ser, &mimes).await;
+                serials[idx].store(ser + 1, Ordering::SeqCst);
+            }
+        });
     });
     Some(id)
 }
