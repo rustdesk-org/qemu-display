@@ -46,7 +46,7 @@ impl Handler {
                         if state {
                             item.set_property("active", false);
                         }
-                        widget.emit_by_name::<()>("show-error", &[&e.to_string()]);
+                        widget.emit_by_name::<bool>("show-error", &[&e.to_string()]);
                     },
                 }
             }));
