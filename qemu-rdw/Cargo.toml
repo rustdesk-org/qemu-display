@@ -17,3 +17,4 @@ rdw = { package = "rdw4", version = "0.1", features = ["bindings"] }
 futures-util = "0.3"
 futures = "0.3"
 async-trait = "0.1"
+uds_windows = "1.0.2"

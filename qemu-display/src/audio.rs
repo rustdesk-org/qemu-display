@@ -1,6 +1,14 @@
-use std::os::unix::{io::AsRawFd, net::UnixStream};
-use zbus::{dbus_interface, dbus_proxy, zvariant::Fd, Connection};
+#[cfg(windows)]
+use crate::win32::Fd;
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
+#[cfg(windows)]
+use uds_windows::UnixStream;
+#[cfg(unix)]
+use zbus::zvariant::Fd;
+use zbus::{dbus_interface, dbus_proxy, Connection};
 
+use crate::util;
 use crate::Result;
 
 #[derive(Debug)]
@@ -236,9 +244,8 @@ impl Audio {
 
     pub async fn register_out_listener<H: AudioOutHandler>(&mut self, handler: H) -> Result<()> {
         let (p0, p1) = UnixStream::pair()?;
-        self.proxy
-            .register_out_listener(p0.as_raw_fd().into())
-            .await?;
+        let p0 = util::prepare_uds_pass(&p0)?;
+        self.proxy.register_out_listener(p0).await?;
         let c = zbus::ConnectionBuilder::unix_stream(p1)
             .p2p()
             .serve_at(
@@ -253,9 +260,8 @@ impl Audio {
 
     pub async fn register_in_listener<H: AudioInHandler>(&mut self, handler: H) -> Result<()> {
         let (p0, p1) = UnixStream::pair()?;
-        self.proxy
-            .register_in_listener(p0.as_raw_fd().into())
-            .await?;
+        let p0 = util::prepare_uds_pass(&p0)?;
+        self.proxy.register_in_listener(p0).await?;
         let c = zbus::ConnectionBuilder::unix_stream(p1)
             .p2p()
             .serve_at(

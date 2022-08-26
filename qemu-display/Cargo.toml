@@ -7,6 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+cfg-if = "1.0"
 log = "0.4"
 derivative = "2.2.0"
 zbus = { version = "2.0", features = ["xml"] }
@@ -23,3 +24,7 @@ usbredirhost = "0.0.1"
 async-broadcast = "0.3.3"
 async-trait = "0.1.48"
 async-lock = "2.3.0"
+
+[target.'cfg(windows)'.dependencies]
+uds_windows = "1.0.1"
+windows = { version = "0.39.0", features = ["Win32_Networking_WinSock", "Win32_Foundation", "Win32_System_IO", "Win32_System_Threading"] }

@@ -1,19 +1,22 @@
 use async_broadcast::{broadcast, Receiver, Sender};
 use async_lock::RwLock;
 use futures::Stream;
+#[cfg(unix)]
+use std::os::unix::{
+    io::{AsRawFd, RawFd},
+    net::UnixStream,
+};
 use std::{
     collections::HashMap,
     default::Default,
     io::{Read, Write},
-    os::unix::{
-        io::{AsRawFd, RawFd},
-        net::UnixStream,
-    },
     pin::Pin,
     sync::{Arc, Mutex},
     task::{Context, Poll},
     thread::JoinHandle,
 };
+#[cfg(windows)]
+use uds_windows::UnixStream;
 use usbredirhost::{
     rusb::{self, UsbContext},
     Device, DeviceHandler, LogLevel,
@@ -24,6 +27,7 @@ use crate::{Chardev, Error, Result};
 #[derive(Debug)]
 struct InnerHandler {
     #[allow(unused)] // keep the device opened, as rusb doesn't take it
+    #[cfg(unix)]
     device_fd: Option<zvariant::OwnedFd>,
     stream: UnixStream,
     ctxt: rusb::Context,
@@ -73,6 +77,7 @@ impl DeviceHandler for Handler {
     fn flush_writes(&mut self) {}
 }
 
+#[cfg(unix)]
 #[zbus::dbus_proxy(
     interface = "org.freedesktop.usbredir1",
     default_service = "org.freedesktop.usbredir1",
@@ -88,6 +93,7 @@ impl Handler {
 
         let (dev, device_fd) = match device.open() {
             Ok(it) => (it, None),
+            #[cfg(unix)]
             Err(rusb::Error::Access) => {
                 let (bus, dev) = (device.bus_number(), device.address());
                 let sysbus = zbus::Connection::system().await?;
@@ -120,6 +126,7 @@ impl Handler {
 
         let handler = Self {
             inner: Arc::new(Mutex::new(InnerHandler {
+                #[cfg(unix)]
                 device_fd,
                 stream,
                 event,
@@ -302,6 +309,7 @@ impl Stream for NFreeChannelsStream {
     }
 }
 
+#[cfg(unix)]
 fn fd_poll_readable(fd: RawFd, wait: Option<RawFd>) -> std::io::Result<bool> {
     let mut fds = vec![libc::pollfd {
         fd,

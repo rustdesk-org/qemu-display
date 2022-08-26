@@ -2,17 +2,19 @@ use futures_util::StreamExt;
 use gio::ApplicationFlags;
 use glib::MainContext;
 use gtk::{gio, glib, prelude::*};
-use qemu_display::{Chardev, Console, Display};
+use qemu_display::{util, Chardev, Console, Display};
 use rdw::gtk;
 use std::{cell::RefCell, sync::Arc};
 
 mod audio;
 mod clipboard;
 mod display;
+#[cfg(unix)]
 mod usbredir;
 
 struct Inner {
     app: gtk::Application,
+    #[cfg(unix)]
     usbredir: RefCell<Option<usbredir::Handler>>,
     audio: RefCell<Option<audio::Handler>>,
     clipboard: RefCell<Option<clipboard::Handler>>,
@@ -101,6 +103,7 @@ impl App {
         let app = App {
             inner: Arc::new(Inner {
                 app,
+                #[cfg(unix)]
                 usbredir: Default::default(),
                 audio: Default::default(),
                 clipboard: Default::default(),
@@ -176,6 +179,7 @@ impl App {
                     .unwrap()
                     .set_child(Some(&rdw));
 
+                #[cfg(unix)]
                 app_clone.set_usbredir(usbredir::Handler::new(display.usbredir().await));
 
                 if let Ok(Some(audio)) = display.audio().await {
@@ -197,13 +201,15 @@ impl App {
                 }
 
                 if let Ok(c) = Chardev::new(&conn, "qmp").await {
-                    use std::{
-                        io::{prelude::*, BufReader},
-                        os::unix::{io::AsRawFd, net::UnixStream},
-                    };
+                    use std::io::{prelude::*, BufReader};
+                    #[cfg(unix)]
+                    use std::os::unix::net::UnixStream;
+                    #[cfg(windows)]
+                    use uds_windows::UnixStream;
 
                     let (p0, p1) = UnixStream::pair().unwrap();
-                    if c.proxy.register(p1.as_raw_fd().into()).await.is_ok() {
+                    let fd = util::prepare_uds_pass(&p1).unwrap();
+                    if c.proxy.register(fd).await.is_ok() {
                         let mut reader = BufReader::new(p0.try_clone().unwrap());
                         let mut line = String::new();
                         std::thread::spawn(move || loop {
@@ -218,22 +224,26 @@ impl App {
             });
         });
 
-        let action_usb = gio::SimpleAction::new("usb", None);
-        let app_clone = app.clone();
-        action_usb.connect_activate(move |_, _| {
-            let usbredir = app_clone.inner.usbredir.borrow();
-            if let Some(usbredir) = usbredir.as_ref() {
-                let dialog = gtk::Dialog::new();
-                dialog.set_transient_for(app_clone.inner.app.active_window().as_ref());
-                dialog.set_child(Some(&usbredir.widget()));
-                dialog.show();
-            }
-        });
-        app.inner.app.add_action(&action_usb);
+        #[cfg(unix)]
+        {
+            let action_usb = gio::SimpleAction::new("usb", None);
+            let app_clone = app.clone();
+            action_usb.connect_activate(move |_, _| {
+                let usbredir = app_clone.inner.usbredir.borrow();
+                if let Some(usbredir) = usbredir.as_ref() {
+                    let dialog = gtk::Dialog::new();
+                    dialog.set_transient_for(app_clone.inner.app.active_window().as_ref());
+                    dialog.set_child(Some(&usbredir.widget()));
+                    dialog.show();
+                }
+            });
+            app.inner.app.add_action(&action_usb);
+        }
 
         app
     }
 
+    #[cfg(unix)]
     fn set_usbredir(&self, usbredir: usbredir::Handler) {
         self.inner.usbredir.replace(Some(usbredir));
     }

@@ -12,7 +12,9 @@ use zbus::{
 };
 use zvariant::OwnedObjectPath;
 
-use crate::{Audio, Chardev, Clipboard, Error, Result, UsbRedir, VMProxy};
+#[cfg(unix)]
+use crate::UsbRedir;
+use crate::{Audio, Chardev, Clipboard, Error, Result, VMProxy};
 
 struct Inner<'d> {
     proxy: fdo::ObjectManagerProxy<'d>,
@@ -144,6 +146,7 @@ impl<'d> Display<'d> {
             .await
     }
 
+    #[cfg(unix)]
     pub async fn usbredir(&self) -> UsbRedir {
         let chardevs = stream::iter(self.chardevs().await)
             .filter_map(|c| async move {

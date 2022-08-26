@@ -1,5 +1,9 @@
 #![allow(clippy::too_many_arguments)]
 
+pub mod util;
+#[cfg(windows)]
+mod win32;
+
 mod error;
 pub use error::*;
 
@@ -30,7 +34,9 @@ pub use mouse::*;
 mod display;
 pub use display::*;
 
+#[cfg(unix)]
 mod usbredir;
+#[cfg(unix)]
 pub use usbredir::UsbRedir;
 
 #[cfg(test)]

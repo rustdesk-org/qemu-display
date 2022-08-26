@@ -1,15 +1,15 @@
-use std::{
-    cell::RefCell,
-    convert::TryFrom,
-    os::unix::{io::AsRawFd, net::UnixStream},
-};
-use zbus::{
-    dbus_proxy,
-    zvariant::{Fd, ObjectPath},
-    Connection,
-};
+#[cfg(windows)]
+use crate::win32::Fd;
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
+use std::{cell::RefCell, convert::TryFrom};
+#[cfg(windows)]
+use uds_windows::UnixStream;
+#[cfg(unix)]
+use zbus::zvariant::Fd;
+use zbus::{dbus_proxy, zvariant::ObjectPath, Connection};
 
-use crate::{ConsoleListener, ConsoleListenerHandler, KeyboardProxy, MouseProxy, Result};
+use crate::{util, ConsoleListener, ConsoleListenerHandler, KeyboardProxy, MouseProxy, Result};
 
 #[dbus_proxy(default_service = "org.qemu", interface = "org.qemu.Display1.Console")]
 pub trait Console {
@@ -87,7 +87,8 @@ impl Console {
 
     pub async fn register_listener<H: ConsoleListenerHandler>(&self, handler: H) -> Result<()> {
         let (p0, p1) = UnixStream::pair()?;
-        self.proxy.register_listener(p0.as_raw_fd().into()).await?;
+        let p0 = util::prepare_uds_pass(&p0)?;
+        self.proxy.register_listener(p0).await?;
         let c = zbus::ConnectionBuilder::unix_stream(p1)
             .p2p()
             .serve_at("/org/qemu/Display1/Listener", ConsoleListener::new(handler))?

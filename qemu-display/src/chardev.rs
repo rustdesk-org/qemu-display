@@ -1,14 +1,16 @@
+#[cfg(windows)]
+use crate::win32::Fd;
 use std::convert::TryFrom;
-use zbus::{
-    dbus_proxy,
-    zvariant::{Fd, ObjectPath},
-};
+#[cfg(unix)]
+use zbus::zvariant::Fd;
+use zbus::{dbus_proxy, zvariant::ObjectPath};
 
 use crate::Result;
 
 #[dbus_proxy(default_service = "org.qemu", interface = "org.qemu.Display1.Chardev")]
 pub trait Chardev {
     /// Register method
+    #[cfg(unix)]
     fn register(&self, stream: Fd) -> zbus::Result<()>;
 
     /// SendBreak method

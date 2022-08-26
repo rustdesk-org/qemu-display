@@ -1,9 +1,12 @@
+#[cfg(windows)]
+use crate::win32::Fd;
 use derivative::Derivative;
-use std::{
-    ops::Drop,
-    os::unix::io::{AsRawFd, IntoRawFd, RawFd},
-};
-use zbus::{dbus_interface, zvariant::Fd};
+use std::ops::Drop;
+#[cfg(unix)]
+use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
+use zbus::dbus_interface;
+#[cfg(unix)]
+use zbus::zvariant::Fd;
 
 #[derive(Derivative)]
 #[derivative(Debug)]
@@ -29,6 +32,7 @@ pub struct Update {
     pub data: Vec<u8>,
 }
 
+#[cfg(unix)]
 #[derive(Debug)]
 pub struct ScanoutDMABUF {
     pub fd: RawFd,
@@ -39,6 +43,10 @@ pub struct ScanoutDMABUF {
     pub modifier: u64,
     pub y0_top: bool,
 }
+
+#[cfg(windows)]
+#[derive(Debug)]
+pub struct ScanoutDMABUF {}
 
 #[derive(Derivative)]
 #[derivative(Debug)]
@@ -51,6 +59,7 @@ pub struct Cursor {
     pub data: Vec<u8>,
 }
 
+#[cfg(unix)]
 impl Drop for ScanoutDMABUF {
     fn drop(&mut self) {
         if self.fd >= 0 {
@@ -61,6 +70,7 @@ impl Drop for ScanoutDMABUF {
     }
 }
 
+#[cfg(unix)]
 impl IntoRawFd for ScanoutDMABUF {
     fn into_raw_fd(mut self) -> RawFd {
         std::mem::replace(&mut self.fd, -1)
@@ -148,6 +158,22 @@ impl<H: ConsoleListenerHandler> ConsoleListener<H> {
             .await;
     }
 
+    #[cfg(not(unix))]
+    #[dbus_interface(name = "ScanoutDMABUF")]
+    async fn scanout_dmabuf(
+        &mut self,
+        _fd: Fd,
+        _width: u32,
+        _height: u32,
+        _stride: u32,
+        _fourcc: u32,
+        _modifier: u64,
+        _y0_top: bool,
+    ) {
+        unimplemented!()
+    }
+
+    #[cfg(unix)]
     #[dbus_interface(name = "ScanoutDMABUF")]
     async fn scanout_dmabuf(
         &mut self,

@@ -5,6 +5,7 @@ use keycodemap::KEYMAP_XORGEVDEV2QNUM;
 use once_cell::sync::OnceCell;
 use qemu_display::{Console, ConsoleListenerHandler};
 use rdw::{gtk, DisplayExt};
+#[cfg(unix)]
 use std::os::unix::io::IntoRawFd;
 
 mod imp {
@@ -158,6 +159,11 @@ mod imp {
                                 }
                                 widget.update_area(u.x as _, u.y as _, u.w as _, u.h as _, u.stride as _, &u.data);
                             }
+                            #[cfg(windows)]
+                            ScanoutDMABUF(_) => {
+                                unimplemented!()
+                            }
+                            #[cfg(unix)]
                             ScanoutDMABUF(s) => {
                                 widget.set_display_size(Some((s.width as _, s.height as _)));
                                 widget.set_dmabuf_scanout(rdw::RdwDmabufScanout {
