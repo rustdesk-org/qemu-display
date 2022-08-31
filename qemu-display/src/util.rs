@@ -14,11 +14,11 @@ use std::os::windows::io::AsRawSocket;
 #[cfg(windows)]
 use uds_windows::UnixStream;
 #[cfg(windows)]
-use windows::Win32::Networking::WinSock::{WSADuplicateSocketW, SOCKET, WSAPROTOCOL_INFOW};
+use windows::Win32::Networking::WinSock::SOCKET;
 #[cfg(windows)]
 use windows::Win32::System::Threading::PROCESS_DUP_HANDLE;
 
-pub fn prepare_uds_pass(us: &UnixStream) -> Result<Fd> {
+pub fn prepare_uds_pass(#[cfg(windows)] conn: &zbus::Connection, us: &UnixStream) -> Result<Fd> {
     #[cfg(unix)]
     {
         Ok(us.as_raw_fd().into())
@@ -26,21 +26,9 @@ pub fn prepare_uds_pass(us: &UnixStream) -> Result<Fd> {
 
     #[cfg(windows)]
     {
-        let pid = win32::unix_stream_get_peer_pid(us)?;
-        let p = win32::ProcessHandle::open(Some(pid), PROCESS_DUP_HANDLE)?;
-        let mut info = unsafe { std::mem::zeroed() };
-        if unsafe {
-            WSADuplicateSocketW(SOCKET(us.as_raw_socket() as _), p.process_id(), &mut info)
-        } != 0
-        {
-            return Err(crate::Error::Io(win32::wsa_last_err()));
-        }
-        let info = unsafe {
-            std::slice::from_raw_parts(
-                &info as *const _ as *const u8,
-                std::mem::size_of::<WSAPROTOCOL_INFOW>(),
-            )
-        };
-        Ok(info.to_vec())
+        // FIXME: we should use GetConnectionCredentials to work with a bus
+        let pid = conn.peer_pid()?.unwrap();
+        let p = win32::ProcessHandle::open(Some(pid as _), PROCESS_DUP_HANDLE)?;
+        p.duplicate_socket(SOCKET(us.as_raw_socket() as _))
     }
 }

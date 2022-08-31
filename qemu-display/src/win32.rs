@@ -1,6 +1,6 @@
 use std::io;
-use uds_windows::UnixStream;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::Networking::WinSock::{WSADuplicateSocketW, SOCKET, WSAPROTOCOL_INFOW};
 use windows::Win32::System::Threading::PROCESS_ACCESS_RIGHTS;
 
 pub type Fd = Vec<u8>;
@@ -36,6 +36,20 @@ impl ProcessHandle {
 
         unsafe { GetProcessId(self.0) }
     }
+
+    pub fn duplicate_socket(&self, sock: SOCKET) -> crate::Result<Fd> {
+        let mut info = unsafe { std::mem::zeroed() };
+        if unsafe { WSADuplicateSocketW(sock, self.process_id(), &mut info) } != 0 {
+            return Err(crate::Error::Io(wsa_last_err()));
+        }
+        let info = unsafe {
+            std::slice::from_raw_parts(
+                &info as *const _ as *const u8,
+                std::mem::size_of::<WSAPROTOCOL_INFOW>(),
+            )
+        };
+        Ok(info.to_vec())
+    }
 }
 
 pub(crate) fn wsa_last_err() -> io::Error {
@@ -43,43 +57,4 @@ pub(crate) fn wsa_last_err() -> io::Error {
 
     let err = unsafe { WSAGetLastError() };
     io::Error::from_raw_os_error(err.0)
-}
-
-// Get the process ID of the connected peer
-pub fn unix_stream_get_peer_pid(stream: &UnixStream) -> Result<u32, io::Error> {
-    use std::os::windows::io::AsRawSocket;
-    use windows::Win32::Networking::WinSock::{
-        WSAIoctl, IOC_OUT, IOC_VENDOR, SOCKET, SOCKET_ERROR,
-    };
-
-    macro_rules! _WSAIOR {
-        ($x:expr, $y:expr) => {
-            IOC_OUT | $x | $y
-        };
-    }
-
-    let socket = stream.as_raw_socket();
-    const SIO_AF_UNIX_GETPEERPID: u32 = _WSAIOR!(IOC_VENDOR, 256);
-    let mut ret = 0 as u32;
-    let mut bytes = 0;
-
-    let r = unsafe {
-        WSAIoctl(
-            SOCKET(socket as _),
-            SIO_AF_UNIX_GETPEERPID,
-            0 as *mut _,
-            0,
-            &mut ret as *mut _ as *mut _,
-            std::mem::size_of_val(&ret) as u32,
-            &mut bytes,
-            0 as *mut _,
-            None,
-        )
-    };
-
-    if r == SOCKET_ERROR {
-        return Err(wsa_last_err());
-    }
-
-    Ok(ret)
 }

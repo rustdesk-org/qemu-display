@@ -87,7 +87,11 @@ impl Console {
 
     pub async fn register_listener<H: ConsoleListenerHandler>(&self, handler: H) -> Result<()> {
         let (p0, p1) = UnixStream::pair()?;
-        let p0 = util::prepare_uds_pass(&p0)?;
+        let p0 = util::prepare_uds_pass(
+            #[cfg(windows)]
+            self.proxy.inner().connection(),
+            &p0,
+        )?;
         self.proxy.register_listener(p0).await?;
         let c = zbus::ConnectionBuilder::unix_stream(p1)
             .p2p()

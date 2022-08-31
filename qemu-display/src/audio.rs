@@ -244,7 +244,11 @@ impl Audio {
 
     pub async fn register_out_listener<H: AudioOutHandler>(&mut self, handler: H) -> Result<()> {
         let (p0, p1) = UnixStream::pair()?;
-        let p0 = util::prepare_uds_pass(&p0)?;
+        let p0 = util::prepare_uds_pass(
+            #[cfg(windows)]
+            self.proxy.inner().connection(),
+            &p0,
+        )?;
         self.proxy.register_out_listener(p0).await?;
         let c = zbus::ConnectionBuilder::unix_stream(p1)
             .p2p()
@@ -260,7 +264,11 @@ impl Audio {
 
     pub async fn register_in_listener<H: AudioInHandler>(&mut self, handler: H) -> Result<()> {
         let (p0, p1) = UnixStream::pair()?;
-        let p0 = util::prepare_uds_pass(&p0)?;
+        let p0 = util::prepare_uds_pass(
+            #[cfg(windows)]
+            self.proxy.inner().connection(),
+            &p0,
+        )?;
         self.proxy.register_in_listener(p0).await?;
         let c = zbus::ConnectionBuilder::unix_stream(p1)
             .p2p()

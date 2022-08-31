@@ -208,7 +208,12 @@ impl App {
                     use uds_windows::UnixStream;
 
                     let (p0, p1) = UnixStream::pair().unwrap();
-                    let fd = util::prepare_uds_pass(&p1).unwrap();
+                    let fd = util::prepare_uds_pass(
+                        #[cfg(windows)]
+                        c.proxy.inner().connection(),
+                        &p1,
+                    )
+                    .unwrap();
                     if c.proxy.register(fd).await.is_ok() {
                         let mut reader = BufReader::new(p0.try_clone().unwrap());
                         let mut line = String::new();
