@@ -9,7 +9,7 @@ use std::{
     thread, time,
 };
 
-use clap::Clap;
+use clap::Parser;
 use image::GenericImage;
 use keycodemap::*;
 use qemu_display::{Console, ConsoleListenerHandler, MouseButton, VMProxy};
@@ -18,7 +18,7 @@ use vnc::{
     Encoding, Error as VncError, PixelFormat, Rect, Screen, Server as VncServer,
 };
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 pub struct SocketAddrArgs {
     /// IP address
     #[clap(short, long, default_value = "127.0.0.1")]
@@ -34,7 +34,7 @@ impl From<SocketAddrArgs> for std::net::SocketAddr {
     }
 }
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 struct Cli {
     #[clap(flatten)]
     address: SocketAddrArgs,
@@ -319,7 +319,7 @@ impl Server {
     }
 
     async fn run_console(&self) -> Result<(), Box<dyn Error>> {
-        let mut inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock().unwrap();
         inner
             .console
             .register_listener(ConsoleListener {
