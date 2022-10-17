@@ -82,16 +82,14 @@ impl<'d> Display<'d> {
         D: TryInto<BusName<'d>>,
         D::Error: Into<Error>,
     {
-        let dest: BusName = if let Some(dest) = dest {
-            dest.try_into().map_err(Into::into)?
+        let builder = fdo::ObjectManagerProxy::builder(conn);
+        let builder = if let Some(dest) = dest {
+            let dest = dest.try_into().map_err(Into::into)?;
+            builder.destination(dest)?
         } else {
-            "org.qemu".try_into().unwrap()
+            builder
         };
-        let proxy = fdo::ObjectManagerProxy::builder(conn)
-            .destination(dest)?
-            .path("/org/qemu/Display1")?
-            .build()
-            .await?;
+        let proxy = builder.path("/org/qemu/Display1")?.build().await?;
         let objects = proxy.get_managed_objects().await?;
         // TODO: listen for changes
         let inner = Inner {
