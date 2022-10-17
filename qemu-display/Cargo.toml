@@ -28,3 +28,10 @@ async-lock = "2.3.0"
 [target.'cfg(windows)'.dependencies]
 uds_windows = "1.0.1"
 windows = { version = "0.39.0", features = ["Win32_Networking_WinSock", "Win32_Foundation", "Win32_System_IO", "Win32_System_Threading"] }
+
+[target.'cfg(windows)'.dev-dependencies]
+qapi = { version = "0.9.0", features = ["qmp"] }
+serde = { version = "^1.0.27", features = ["derive"] }
+base64 = "0.13"
+async-std = { version = "1.12.0", features = ["attributes"] }
+tracing-subscriber = { version = "0.3.11", features = ["env-filter" , "fmt"], default-features = false }
