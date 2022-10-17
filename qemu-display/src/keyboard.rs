@@ -5,7 +5,7 @@ use zvariant::Type;
 
 #[bitflags]
 #[repr(u32)]
-#[derive(Type, Debug, PartialEq, Copy, Clone, Serialize, Deserialize)]
+#[derive(Type, Debug, PartialEq, Copy, Clone, Eq, Serialize, Deserialize)]
 pub enum KeyboardModifiers {
     Scroll = 0x1,
     Num = 0x2,

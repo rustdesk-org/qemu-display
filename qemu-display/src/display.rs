@@ -38,7 +38,7 @@ impl<'d> Display<'d> {
             .receive_name_owner_changed()
             .await?;
         loop {
-            let list = Display::by_name(&conn).await?;
+            let list = Display::by_name(conn).await?;
             if let Some(name) = name {
                 let res = list.get(name);
                 if res.is_some() {
