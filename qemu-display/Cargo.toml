@@ -6,6 +6,9 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+qmp = ["dep:qapi", "dep:base64"]
+
 [dependencies]
 cfg-if = "1.0"
 log = "0.4"
@@ -14,7 +17,7 @@ zbus = { version = "3.2", features = ["xml"] }
 zvariant = { version = "3.0", features = ["serde_bytes"] }
 libc = "0.2.86"
 enumflags2 = { version = "0.7", features = ["serde"] }
-serde = { version = "1.0.123", features = ["derive"] }
+serde = { version = "1.0.27", features = ["derive"] }
 serde_repr = "0.1.6"
 serde_bytes = "0.11.5"
 futures-util = { version = "0.3.8", features = ["async-await-macro"] }
@@ -24,14 +27,17 @@ usbredirhost = "0.0.1"
 async-broadcast = "0.3.3"
 async-trait = "0.1.48"
 async-lock = "2.3.0"
+qapi = { version = "0.9.0", features = ["qmp"], optional = true }
+base64 = { version = "0.13", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 uds_windows = "1.0.1"
 windows = { version = "0.39.0", features = ["Win32_Networking_WinSock", "Win32_Foundation", "Win32_System_IO", "Win32_System_Threading"] }
 
 [target.'cfg(windows)'.dev-dependencies]
-qapi = { version = "0.9.0", features = ["qmp"] }
-serde = { version = "^1.0.27", features = ["derive"] }
-base64 = "0.13"
 async-std = { version = "1.12.0", features = ["attributes"] }
 tracing-subscriber = { version = "0.3.11", features = ["env-filter" , "fmt"], default-features = false }
+
+[[example]]
+name = 'win32-test'
+required-features = ["qmp"]

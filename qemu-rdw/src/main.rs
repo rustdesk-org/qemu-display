@@ -29,8 +29,51 @@ struct App {
 struct AppOptions {
     vm_name: Option<String>,
     address: Option<String>,
+    #[cfg(feature = "qmp")]
+    qmp: Option<String>,
     list: bool,
     wait: bool,
+}
+
+async fn display_from_opt(opt: Arc<RefCell<AppOptions>>) -> Option<Display<'static>> {
+    #[cfg(feature = "qmp")]
+    if let Some(qmp_addr) = &opt.borrow().qmp {
+        return Some(Display::new_qmp(qmp_addr).await.unwrap());
+    }
+    let builder = if let Some(addr) = &opt.borrow().address {
+        zbus::ConnectionBuilder::address(addr.as_str())
+    } else {
+        zbus::ConnectionBuilder::session()
+    };
+    let conn = builder
+        .unwrap()
+        .internal_executor(false)
+        .build()
+        .await
+        .expect("Failed to connect to DBus");
+
+    let conn_clone = conn.clone();
+    MainContext::default().spawn_local(async move {
+        loop {
+            conn_clone.executor().tick().await;
+        }
+    });
+
+    if opt.borrow().list {
+        let list = Display::by_name(&conn).await.unwrap();
+        for (name, dest) in list {
+            println!("{} (at {})", name, dest);
+        }
+        return None;
+    }
+    let dest = {
+        let name = opt.borrow().vm_name.clone();
+        let wait = opt.borrow().wait;
+
+        Display::lookup(&conn, wait, name.as_deref()).await.unwrap()
+    };
+
+    Some(Display::new(&conn, dest).await.unwrap())
 }
 
 impl App {
@@ -50,6 +93,15 @@ impl App {
             glib::OptionFlags::NONE,
             glib::OptionArg::String,
             "D-Bus bus address",
+            None,
+        );
+        #[cfg(feature = "qmp")]
+        app.add_main_option(
+            "qmp",
+            glib::Char(b'q' as _),
+            glib::OptionFlags::NONE,
+            glib::OptionArg::String,
+            "QMP monitor address",
             None,
         );
         app.add_main_option(
@@ -88,6 +140,10 @@ impl App {
             if let Some(arg) = opt.lookup_value("address", None) {
                 app_opt.address = arg.get::<String>();
             }
+            #[cfg(feature = "qmp")]
+            if let Some(arg) = opt.lookup_value("qmp", None) {
+                app_opt.qmp = arg.get::<String>();
+            }
             if opt.lookup_value("list", None).is_some() {
                 app_opt.list = true;
             }
@@ -124,42 +180,13 @@ impl App {
             let app_clone = app_clone.clone();
             let opt_clone = opt.clone();
             MainContext::default().spawn_local(async move {
-                let builder = if let Some(addr) = &opt_clone.borrow().address {
-                    zbus::ConnectionBuilder::address(addr.as_str())
-                } else {
-                    zbus::ConnectionBuilder::session()
-                };
-                let conn = builder
-                    .unwrap()
-                    .internal_executor(false)
-                    .build()
-                    .await
-                    .expect("Failed to connect to DBus");
-
-                let conn_clone = conn.clone();
-                MainContext::default().spawn_local(async move {
-                    loop {
-                        conn_clone.executor().tick().await;
+                let display = match display_from_opt(opt_clone).await {
+                    Some(d) => d,
+                    None => {
+                        app_clone.inner.app.quit();
+                        return;
                     }
-                });
-
-                if opt_clone.borrow().list {
-                    let list = Display::by_name(&conn).await.unwrap();
-                    for (name, dest) in list {
-                        println!("{} (at {})", name, dest);
-                    }
-                    app_clone.inner.app.quit();
-                    return;
-                }
-                let dest = {
-                    let name = opt_clone.borrow().vm_name.clone();
-                    let wait = opt_clone.borrow().wait;
-
-                    Display::lookup(&conn, wait, name.as_deref()).await.unwrap()
                 };
-
-                let display = Display::new(&conn, dest).await.unwrap();
-
                 let disp = display.clone();
                 MainContext::default().spawn_local(async move {
                     let mut changed = disp.receive_owner_changed().await.unwrap();
@@ -168,7 +195,7 @@ impl App {
                     }
                 });
 
-                let console = Console::new(&conn, 0)
+                let console = Console::new(display.connection(), 0)
                     .await
                     .expect("Failed to get the QEMU console");
                 let rdw = display::Display::new(console);
@@ -200,7 +227,7 @@ impl App {
                     }
                 }
 
-                if let Ok(c) = Chardev::new(&conn, "qmp").await {
+                if let Ok(c) = Chardev::new(display.connection(), "qmp").await {
                     use std::io::{prelude::*, BufReader};
                     #[cfg(unix)]
                     use std::os::unix::net::UnixStream;

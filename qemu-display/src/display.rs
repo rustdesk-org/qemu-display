@@ -16,6 +16,11 @@ use zvariant::OwnedObjectPath;
 use crate::UsbRedir;
 use crate::{Audio, Chardev, Clipboard, Error, Result, VMProxy};
 
+#[cfg(all(unix, feature = "qmp"))]
+use std::os::unix::net::UnixStream;
+#[cfg(all(windows, feature = "qmp"))]
+use uds_windows::UnixStream;
+
 struct Inner<'d> {
     proxy: fdo::ObjectManagerProxy<'d>,
     conn: Connection,
@@ -102,6 +107,63 @@ impl<'d> Display<'d> {
         Ok(Self {
             inner: Arc::new(inner),
         })
+    }
+
+    pub fn connection(&self) -> &Connection {
+        &self.inner.conn
+    }
+
+    #[cfg(all(windows, feature = "qmp"))]
+    pub async fn new_qmp<P: AsRef<std::path::Path>>(path: P) -> Result<Display<'d>> {
+        #![allow(non_snake_case, non_camel_case_types)]
+
+        use crate::win32::{duplicate_socket, unix_stream_get_peer_pid};
+        use qapi::{qmp, Qmp};
+        use serde::{Deserialize, Serialize};
+        use std::os::windows::io::AsRawSocket;
+        use windows::Win32::Networking::WinSock::SOCKET;
+
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub struct get_win32_socket {
+            #[serde(rename = "info")]
+            pub info: ::std::string::String,
+            #[serde(rename = "fdname")]
+            pub fdname: ::std::string::String,
+        }
+
+        impl qmp::QmpCommand for get_win32_socket {}
+        impl qapi::Command for get_win32_socket {
+            const NAME: &'static str = "get-win32-socket";
+            const ALLOW_OOB: bool = false;
+
+            type Ok = qapi::Empty;
+        }
+
+        let stream = UnixStream::connect(path)?;
+        let pid = unix_stream_get_peer_pid(&stream)?;
+        let mut qmp = Qmp::from_stream(&stream);
+        let _info = qmp.handshake()?;
+
+        let (p0, p1) = UnixStream::pair()?;
+        let info = duplicate_socket(pid, SOCKET(p0.as_raw_socket() as _))?;
+        let info = base64::encode(info);
+        qmp.execute(&get_win32_socket {
+            info,
+            fdname: "fdname".into(),
+        })?;
+        qmp.execute(&qmp::add_client {
+            skipauth: None,
+            tls: None,
+            protocol: "@dbus-display".into(),
+            fdname: "fdname".into(),
+        })?;
+
+        let conn = zbus::ConnectionBuilder::unix_stream(p1)
+            .p2p()
+            .build()
+            .await?;
+
+        Self::new(&conn, Option::<String>::None).await
     }
 
     pub async fn receive_owner_changed(&self) -> Result<OwnerChangedStream<'_>> {
