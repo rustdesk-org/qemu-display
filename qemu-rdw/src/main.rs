@@ -295,6 +295,10 @@ impl App {
 
 fn main() {
     pretty_env_logger::init();
+    tracing_subscriber::fmt::init();
+    unsafe {
+        rdw::setup_logger(log::logger(), log::max_level()).unwrap();
+    }
 
     let app = App::new();
     app.run();
