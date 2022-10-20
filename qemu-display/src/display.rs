@@ -25,6 +25,8 @@ struct Inner<'d> {
     proxy: fdo::ObjectManagerProxy<'d>,
     conn: Connection,
     objects: ManagedObjects,
+    #[cfg(windows)]
+    peer_pid: u32,
 }
 
 #[derive(Clone)]
@@ -82,7 +84,11 @@ impl<'d> Display<'d> {
         Ok(hm)
     }
 
-    pub async fn new<D>(conn: &Connection, dest: Option<D>) -> Result<Display<'d>>
+    pub async fn new<D>(
+        conn: &Connection,
+        dest: Option<D>,
+        #[cfg(windows)] peer_pid: u32,
+    ) -> Result<Display<'d>>
     where
         D: TryInto<BusName<'d>>,
         D::Error: Into<Error>,
@@ -102,6 +108,8 @@ impl<'d> Display<'d> {
             proxy,
             conn: conn.clone(),
             objects,
+            #[cfg(windows)]
+            peer_pid,
         };
 
         Ok(Self {
@@ -111,6 +119,11 @@ impl<'d> Display<'d> {
 
     pub fn connection(&self) -> &Connection {
         &self.inner.conn
+    }
+
+    #[cfg(windows)]
+    pub fn peer_pid(&self) -> u32 {
+        self.inner.peer_pid
     }
 
     #[cfg(all(windows, feature = "qmp"))]
@@ -163,7 +176,7 @@ impl<'d> Display<'d> {
             .build()
             .await?;
 
-        Self::new(&conn, Option::<String>::None).await
+        Self::new(&conn, Option::<String>::None, pid).await
     }
 
     pub async fn receive_owner_changed(&self) -> Result<OwnerChangedStream<'_>> {
@@ -179,7 +192,14 @@ impl<'d> Display<'d> {
             return Ok(None);
         }
 
-        Ok(Some(Audio::new(&self.inner.conn).await?))
+        Ok(Some(
+            Audio::new(
+                &self.inner.conn,
+                #[cfg(windows)]
+                self.peer_pid(),
+            )
+            .await?,
+        ))
     }
 
     pub async fn clipboard(&self) -> Result<Option<Clipboard>> {

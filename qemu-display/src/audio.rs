@@ -72,6 +72,8 @@ pub struct Audio {
     pub proxy: AudioProxy<'static>,
     out_listener: Option<Connection>,
     in_listener: Option<Connection>,
+    #[cfg(windows)]
+    peer_pid: u32,
 }
 
 #[async_trait::async_trait]
@@ -233,12 +235,14 @@ impl<H: AudioInHandler> AudioInListener<H> {
 }
 
 impl Audio {
-    pub async fn new(conn: &zbus::Connection) -> Result<Self> {
+    pub async fn new(conn: &zbus::Connection, #[cfg(windows)] peer_pid: u32) -> Result<Self> {
         let proxy = AudioProxy::new(conn).await?;
         Ok(Self {
             proxy,
             in_listener: None,
             out_listener: None,
+            #[cfg(windows)]
+            peer_pid,
         })
     }
 
@@ -246,7 +250,7 @@ impl Audio {
         let (p0, p1) = UnixStream::pair()?;
         let p0 = util::prepare_uds_pass(
             #[cfg(windows)]
-            self.proxy.inner().connection(),
+            self.peer_pid,
             &p0,
         )?;
         self.proxy.register_out_listener(p0).await?;
@@ -266,7 +270,7 @@ impl Audio {
         let (p0, p1) = UnixStream::pair()?;
         let p0 = util::prepare_uds_pass(
             #[cfg(windows)]
-            self.proxy.inner().connection(),
+            self.peer_pid,
             &p0,
         )?;
         self.proxy.register_in_listener(p0).await?;

@@ -73,7 +73,16 @@ async fn display_from_opt(opt: Arc<RefCell<AppOptions>>) -> Option<Display<'stat
         Display::lookup(&conn, wait, name.as_deref()).await.unwrap()
     };
 
-    Some(Display::new(&conn, dest).await.unwrap())
+    Some(
+        Display::new(
+            &conn,
+            dest,
+            #[cfg(windows)]
+            unimplemented!(),
+        )
+        .await
+        .unwrap(),
+    )
 }
 
 impl App {
@@ -195,9 +204,14 @@ impl App {
                     }
                 });
 
-                let console = Console::new(display.connection(), 0)
-                    .await
-                    .expect("Failed to get the QEMU console");
+                let console = Console::new(
+                    display.connection(),
+                    0,
+                    #[cfg(windows)]
+                    display.peer_pid(),
+                )
+                .await
+                .expect("Failed to get the QEMU console");
                 let rdw = display::Display::new(console);
                 app_clone
                     .inner
@@ -237,7 +251,7 @@ impl App {
                     let (p0, p1) = UnixStream::pair().unwrap();
                     let fd = util::prepare_uds_pass(
                         #[cfg(windows)]
-                        c.proxy.inner().connection(),
+                        display.peer_pid(),
                         &p1,
                     )
                     .unwrap();

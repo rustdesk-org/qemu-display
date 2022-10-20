@@ -18,7 +18,7 @@ use windows::Win32::Networking::WinSock::SOCKET;
 #[cfg(windows)]
 use windows::Win32::System::Threading::PROCESS_DUP_HANDLE;
 
-pub fn prepare_uds_pass(#[cfg(windows)] conn: &zbus::Connection, us: &UnixStream) -> Result<Fd> {
+pub fn prepare_uds_pass(#[cfg(windows)] peer_pid: u32, us: &UnixStream) -> Result<Fd> {
     #[cfg(unix)]
     {
         Ok(us.as_raw_fd().into())
@@ -26,9 +26,7 @@ pub fn prepare_uds_pass(#[cfg(windows)] conn: &zbus::Connection, us: &UnixStream
 
     #[cfg(windows)]
     {
-        // FIXME: we should use GetConnectionCredentials to work with a bus
-        let pid = conn.peer_pid()?.unwrap();
-        let p = win32::ProcessHandle::open(Some(pid as _), PROCESS_DUP_HANDLE)?;
+        let p = win32::ProcessHandle::open(Some(peer_pid as _), PROCESS_DUP_HANDLE)?;
         p.duplicate_socket(SOCKET(us.as_raw_socket() as _))
     }
 }

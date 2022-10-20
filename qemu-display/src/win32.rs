@@ -38,7 +38,9 @@ impl ProcessHandle {
         process_id: Option<u32>,
         desired_access: PROCESS_ACCESS_RIGHTS,
     ) -> Result<Self, io::Error> {
-        use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcess, PROCESS_QUERY_INFORMATION};
+        use windows::Win32::System::Threading::{
+            GetCurrentProcess, OpenProcess, PROCESS_QUERY_INFORMATION,
+        };
 
         let process = if let Some(process_id) = process_id {
             let desired_access = desired_access | PROCESS_QUERY_INFORMATION;
@@ -51,11 +53,11 @@ impl ProcessHandle {
     }
 
     pub fn process_id(&self) -> crate::Result<u32> {
-        use windows::Win32::System::Threading::GetProcessId;
         use windows::Win32::Foundation::GetLastError;
+        use windows::Win32::System::Threading::GetProcessId;
 
         unsafe {
-            let pid =  GetProcessId(self.0);
+            let pid = GetProcessId(self.0);
             if pid == 0 {
                 Err(io::Error::from_raw_os_error(GetLastError().0 as _).into())
             } else {

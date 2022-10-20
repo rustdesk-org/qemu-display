@@ -54,10 +54,12 @@ pub struct Console {
     #[derivative(Debug = "ignore")]
     pub mouse: MouseProxy<'static>,
     listener: RefCell<Option<Connection>>,
+    #[cfg(windows)]
+    peer_pid: u32,
 }
 
 impl Console {
-    pub async fn new(conn: &Connection, idx: u32) -> Result<Self> {
+    pub async fn new(conn: &Connection, idx: u32, #[cfg(windows)] peer_pid: u32) -> Result<Self> {
         let obj_path = ObjectPath::try_from(format!("/org/qemu/Display1/Console_{}", idx))?;
         let proxy = ConsoleProxy::builder(conn).path(&obj_path)?.build().await?;
         let keyboard = KeyboardProxy::builder(conn)
@@ -70,6 +72,8 @@ impl Console {
             keyboard,
             mouse,
             listener: RefCell::new(None),
+            #[cfg(windows)]
+            peer_pid,
         })
     }
 
@@ -89,7 +93,7 @@ impl Console {
         let (p0, p1) = UnixStream::pair()?;
         let p0 = util::prepare_uds_pass(
             #[cfg(windows)]
-            self.proxy.inner().connection(),
+            self.peer_pid,
             &p0,
         )?;
         self.proxy.register_listener(p0).await?;
