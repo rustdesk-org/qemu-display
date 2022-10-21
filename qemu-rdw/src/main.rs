@@ -4,7 +4,8 @@ use glib::MainContext;
 use gtk::{gio, glib, prelude::*};
 use qemu_display::{util, Chardev, Console, Display};
 use rdw::gtk;
-use std::{cell::RefCell, sync::Arc};
+use std::{cell::RefCell, convert::TryFrom, sync::Arc};
+use zbus::names::BusName;
 
 mod audio;
 mod clipboard;
@@ -66,23 +67,26 @@ async fn display_from_opt(opt: Arc<RefCell<AppOptions>>) -> Option<Display<'stat
         }
         return None;
     }
-    let dest = {
+    let dest = if opt.borrow().vm_name.is_some() {
         let name = opt.borrow().vm_name.clone();
         let wait = opt.borrow().wait;
 
-        Display::lookup(&conn, wait, name.as_deref()).await.unwrap()
+        Display::lookup(&conn, wait, name.as_deref())
+            .await
+            .unwrap()
+            .map(Into::into)
+    } else {
+        BusName::try_from("org.qemu").ok()
     };
 
-    Some(
-        Display::new(
-            &conn,
-            dest,
-            #[cfg(windows)]
-            unimplemented!(),
-        )
-        .await
-        .unwrap(),
+    Display::new(
+        &conn,
+        dest,
+        #[cfg(windows)]
+        unimplemented!(),
     )
+    .await
+    .ok()
 }
 
 impl App {
