@@ -78,7 +78,12 @@ mod imp {
                 .connect_motion(clone!(@weak self as this => move |_, x, y| {
                     log::debug!("motion: {:?}", (x, y));
                     MainContext::default().spawn_local(clone!(@weak this => async move {
-                        let _ = this.obj().console().mouse.set_abs_position(x as _, y as _).await;
+                        if !this.obj().console().mouse.is_absolute().await.unwrap_or(false) {
+                            return;
+                        }
+                        if let Err(e) = this.obj().console().mouse.set_abs_position(x as _, y as _).await {
+                            log::warn!("{e}");
+                        }
                     }));
                 }));
 
