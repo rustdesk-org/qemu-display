@@ -126,44 +126,58 @@ impl<'d> Display<'d> {
         self.inner.peer_pid
     }
 
-    #[cfg(all(windows, feature = "qmp"))]
+    #[cfg(feature = "qmp")]
     pub async fn new_qmp<P: AsRef<std::path::Path>>(path: P) -> Result<Display<'d>> {
-        #![allow(non_snake_case, non_camel_case_types)]
-
-        use crate::win32::{duplicate_socket, unix_stream_get_peer_pid};
         use qapi::{qmp, Qmp};
-        use serde::{Deserialize, Serialize};
-        use std::os::windows::io::AsRawSocket;
-        use windows::Win32::Networking::WinSock::SOCKET;
-
-        #[derive(Debug, Clone, Serialize, Deserialize)]
-        pub struct get_win32_socket {
-            #[serde(rename = "info")]
-            pub info: ::std::string::String,
-            #[serde(rename = "fdname")]
-            pub fdname: ::std::string::String,
-        }
-
-        impl qmp::QmpCommand for get_win32_socket {}
-        impl qapi::Command for get_win32_socket {
-            const NAME: &'static str = "get-win32-socket";
-            const ALLOW_OOB: bool = false;
-
-            type Ok = qapi::Empty;
-        }
 
         let stream = UnixStream::connect(path)?;
-        let pid = unix_stream_get_peer_pid(&stream)?;
         let mut qmp = Qmp::from_stream(&stream);
         let _info = qmp.handshake()?;
 
         let (p0, p1) = UnixStream::pair()?;
-        let info = duplicate_socket(pid, SOCKET(p0.as_raw_socket() as _))?;
-        let info = base64::encode(info);
-        qmp.execute(&get_win32_socket {
-            info,
-            fdname: "fdname".into(),
-        })?;
+
+        #[cfg(unix)]
+        {
+            // FIXME: no ancillary fd API at this point
+            // https://github.com/rust-lang/rust/issues/76915
+            qmp.execute(&qmp::getfd {
+                fdname: "fdname".into(),
+            })?;
+        }
+        #[cfg(windows)]
+        let pid = {
+            use crate::win32::{duplicate_socket, unix_stream_get_peer_pid};
+            use serde::{Deserialize, Serialize};
+            use std::os::windows::io::AsRawSocket;
+            use windows::Win32::Networking::WinSock::SOCKET;
+
+            #[allow(non_camel_case_types)]
+            #[derive(Debug, Clone, Serialize, Deserialize)]
+            pub struct get_win32_socket {
+                #[serde(rename = "info")]
+                pub info: ::std::string::String,
+                #[serde(rename = "fdname")]
+                pub fdname: ::std::string::String,
+            }
+
+            impl qmp::QmpCommand for get_win32_socket {}
+            impl qapi::Command for get_win32_socket {
+                const NAME: &'static str = "get-win32-socket";
+                const ALLOW_OOB: bool = false;
+
+                type Ok = qapi::Empty;
+            }
+
+            let pid = unix_stream_get_peer_pid(&stream)?;
+            let info = duplicate_socket(pid, SOCKET(p0.as_raw_socket() as _))?;
+            let info = base64::encode(info);
+            qmp.execute(&get_win32_socket {
+                info,
+                fdname: "fdname".into(),
+            })?;
+            pid
+        };
+
         qmp.execute(&qmp::add_client {
             skipauth: None,
             tls: None,
@@ -176,7 +190,13 @@ impl<'d> Display<'d> {
             .build()
             .await?;
 
-        Self::new(&conn, Option::<String>::None, pid).await
+        Self::new(
+            &conn,
+            Option::<String>::None,
+            #[cfg(windows)]
+            pid,
+        )
+        .await
     }
 
     pub async fn receive_owner_changed(&self) -> Result<OwnerChangedStream<'_>> {
