@@ -1,10 +1,10 @@
 use futures_util::StreamExt;
 use glib::{clone, subclass::prelude::*, MainContext};
 use gtk::glib;
-use keycodemap::KEYMAP_XORGEVDEV2QNUM;
 use once_cell::sync::OnceCell;
 use qemu_display::{Console, ConsoleListenerHandler};
 use rdw::{gtk, DisplayExt};
+use std::cell::Cell;
 #[cfg(unix)]
 use std::os::unix::io::IntoRawFd;
 
@@ -41,6 +41,7 @@ mod imp {
     #[derive(Debug, Default)]
     pub struct Display {
         pub(crate) console: OnceCell<Console>,
+        keymap: Cell<Option<&'static [u16]>>,
     }
 
     #[glib::object_subclass]
@@ -60,14 +61,15 @@ mod imp {
 
             self.obj().connect_key_event(
                 clone!(@weak self as this => move |_, keyval, keycode, event| {
-                    log::debug!("key-event: {:?}", (keyval, keycode, event));
-                    if let Some(qnum) = KEYMAP_XORGEVDEV2QNUM.get(keycode as usize) {
+                    let mapped = this.keymap.get().and_then(|m| m.get(keycode as usize)).map(|x| *x as u32);
+                    log::debug!("key-{event:?}: {keyval} {keycode} -> {mapped:?}");
+                    if let Some(qnum) = mapped {
                         MainContext::default().spawn_local(clone!(@weak this => async move {
                             if event.contains(rdw::KeyEvent::PRESS) {
-                                let _ = this.obj().console().keyboard.press(*qnum as u32).await;
+                                let _ = this.obj().console().keyboard.press(qnum).await;
                             }
                             if event.contains(rdw::KeyEvent::RELEASE) {
-                                let _ = this.obj().console().keyboard.release(*qnum as u32).await;
+                                let _ = this.obj().console().keyboard.release(qnum).await;
                             }
                         }));
                     }
@@ -145,6 +147,8 @@ mod imp {
     impl WidgetImpl for Display {
         fn realize(&self) {
             self.parent_realize();
+
+            self.keymap.set(rdw::keymap_qnum());
 
             MainContext::default().spawn_local(clone!(@weak self as this => async move {
                 let console = this.console.get().unwrap();
