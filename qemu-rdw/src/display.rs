@@ -56,7 +56,7 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
 
-            self.obj().set_mouse_absolute(true);
+            self.obj().set_mouse_absolute(false);
 
             self.obj().connect_key_event(
                 clone!(@weak self as this => move |_, keyval, keycode, event| {
@@ -216,6 +216,7 @@ mod imp {
                     }
                 }));
                 let mut abs_changed = console.mouse.receive_is_absolute_changed().await;
+                this.obj().set_mouse_absolute(console.mouse.is_absolute().await.unwrap_or(false));
                 MainContext::default().spawn_local(clone!(@weak this => async move {
                     while let Some(abs) = abs_changed.next().await {
                         if let Ok(abs) = abs.get().await {
