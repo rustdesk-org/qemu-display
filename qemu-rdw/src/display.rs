@@ -53,94 +53,100 @@ mod imp {
     }
 
     impl ObjectImpl for Display {
-        fn constructed(&self, obj: &Self::Type) {
-            self.parent_constructed(obj);
+        fn constructed(&self) {
+            self.parent_constructed();
 
-            obj.set_mouse_absolute(true);
+            self.obj().set_mouse_absolute(true);
 
-            obj.connect_key_event(clone!(@weak obj => move |_, keyval, keycode, event| {
-                log::debug!("key-event: {:?}", (keyval, keycode, event));
-                if let Some(qnum) = KEYMAP_XORGEVDEV2QNUM.get(keycode as usize) {
-                    MainContext::default().spawn_local(clone!(@weak obj => async move {
-                        if event.contains(rdw::KeyEvent::PRESS) {
-                            let _ = obj.console().keyboard.press(*qnum as u32).await;
-                        }
-                        if event.contains(rdw::KeyEvent::RELEASE) {
-                            let _ = obj.console().keyboard.release(*qnum as u32).await;
-                        }
-                    }));
-                }
-            }));
-
-            obj.connect_motion(clone!(@weak obj => move |_, x, y| {
-                log::debug!("motion: {:?}", (x, y));
-                MainContext::default().spawn_local(clone!(@weak obj => async move {
-                    let _ = obj.console().mouse.set_abs_position(x as _, y as _).await;
-                }));
-            }));
-
-            obj.connect_motion_relative(clone!(@weak obj => move |_, dx, dy| {
-                log::debug!("motion-relative: {:?}", (dx, dy));
-                MainContext::default().spawn_local(clone!(@weak obj => async move {
-                    let _ = obj.console().mouse.rel_motion(dx as _, dy as _).await;
-                }));
-            }));
-
-            obj.connect_mouse_press(clone!(@weak obj => move |_, button| {
-                log::debug!("mouse-press: {:?}", button);
-                MainContext::default().spawn_local(clone!(@weak obj => async move {
-                    let button = from_gdk_button(button);
-                    let _ = obj.console().mouse.press(button).await;
-                }));
-            }));
-
-            obj.connect_mouse_release(clone!(@weak obj => move |_, button| {
-                log::debug!("mouse-release: {:?}", button);
-                MainContext::default().spawn_local(clone!(@weak obj => async move {
-                    let button = from_gdk_button(button);
-                    let _ = obj.console().mouse.release(button).await;
-                }));
-            }));
-
-            obj.connect_scroll_discrete(clone!(@weak obj => move |_, scroll| {
-                use qemu_display::MouseButton;
-
-                log::debug!("scroll-discrete: {:?}", scroll);
-
-                let button = match scroll {
-                    rdw::Scroll::Up => MouseButton::WheelUp,
-                    rdw::Scroll::Down => MouseButton::WheelDown,
-                    _ => {
-                        log::warn!("not yet implemented");
-                        return;
+            self.obj().connect_key_event(
+                clone!(@weak self as this => move |_, keyval, keycode, event| {
+                    log::debug!("key-event: {:?}", (keyval, keycode, event));
+                    if let Some(qnum) = KEYMAP_XORGEVDEV2QNUM.get(keycode as usize) {
+                        MainContext::default().spawn_local(clone!(@weak this => async move {
+                            if event.contains(rdw::KeyEvent::PRESS) {
+                                let _ = this.obj().console().keyboard.press(*qnum as u32).await;
+                            }
+                            if event.contains(rdw::KeyEvent::RELEASE) {
+                                let _ = this.obj().console().keyboard.release(*qnum as u32).await;
+                            }
+                        }));
                     }
-                };
-                MainContext::default().spawn_local(clone!(@weak obj => async move {
-                    let _ = obj.console().mouse.press(button).await;
-                    let _ = obj.console().mouse.release(button).await;
-                }));
-            }));
+                }),
+            );
 
-            obj.connect_resize_request(clone!(@weak obj => move |_, width, height, wmm, hmm| {
+            self.obj()
+                .connect_motion(clone!(@weak self as this => move |_, x, y| {
+                    log::debug!("motion: {:?}", (x, y));
+                    MainContext::default().spawn_local(clone!(@weak this => async move {
+                        let _ = this.obj().console().mouse.set_abs_position(x as _, y as _).await;
+                    }));
+                }));
+
+            self.obj()
+                .connect_motion_relative(clone!(@weak self as this => move |_, dx, dy| {
+                    log::debug!("motion-relative: {:?}", (dx, dy));
+                    MainContext::default().spawn_local(clone!(@weak this => async move {
+                        let _ = this.obj().console().mouse.rel_motion(dx as _, dy as _).await;
+                    }));
+                }));
+
+            self.obj()
+                .connect_mouse_press(clone!(@weak self as this => move |_, button| {
+                    log::debug!("mouse-press: {:?}", button);
+                    MainContext::default().spawn_local(clone!(@weak this => async move {
+                        let button = from_gdk_button(button);
+                        let _ = this.obj().console().mouse.press(button).await;
+                    }));
+                }));
+
+            self.obj()
+                .connect_mouse_release(clone!(@weak self as this => move |_, button| {
+                    log::debug!("mouse-release: {:?}", button);
+                    MainContext::default().spawn_local(clone!(@weak this => async move {
+                        let button = from_gdk_button(button);
+                        let _ = this.obj().console().mouse.release(button).await;
+                    }));
+                }));
+
+            self.obj()
+                .connect_scroll_discrete(clone!(@weak self as this => move |_, scroll| {
+                    use qemu_display::MouseButton;
+
+                    log::debug!("scroll-discrete: {:?}", scroll);
+
+                    let button = match scroll {
+                        rdw::Scroll::Up => MouseButton::WheelUp,
+                        rdw::Scroll::Down => MouseButton::WheelDown,
+                        _ => {
+                            log::warn!("not yet implemented");
+                            return;
+                        }
+                    };
+                    MainContext::default().spawn_local(clone!(@weak this => async move {
+                        let _ = this.obj().console().mouse.press(button).await;
+                        let _ = this.obj().console().mouse.release(button).await;
+                    }));
+                }));
+
+            self.obj().connect_resize_request(clone!(@weak self as this => move |_, width, height, wmm, hmm| {
                 log::debug!("resize-request: {:?}", (width, height, wmm, hmm));
-                MainContext::default().spawn_local(clone!(@weak obj => async move {
-                    let _ = obj.console().proxy.set_ui_info(wmm as _, hmm as _, 0, 0, width, height).await;
+                MainContext::default().spawn_local(clone!(@weak this => async move {
+                    let _ = this.obj().console().proxy.set_ui_info(wmm as _, hmm as _, 0, 0, width, height).await;
                 }));
             }));
         }
     }
 
     impl WidgetImpl for Display {
-        fn realize(&self, widget: &Self::Type) {
-            self.parent_realize(widget);
+        fn realize(&self) {
+            self.parent_realize();
 
-            MainContext::default().spawn_local(clone!(@weak widget => async move {
-                let self_ = Self::from_instance(&widget);
-                let console = self_.console.get().unwrap();
+            MainContext::default().spawn_local(clone!(@weak self as this => async move {
+                let console = this.console.get().unwrap();
                 // we have to use a channel, because widget is not Send..
                 let (sender, mut receiver) = futures::channel::mpsc::unbounded();
                 console.register_listener(ConsoleHandler { sender }).await.unwrap();
-                MainContext::default().spawn_local(clone!(@weak widget => async move {
+                MainContext::default().spawn_local(clone!(@weak this => async move {
                     while let Some(e) = receiver.next().await {
                         use ConsoleEvent::*;
                         match e {
@@ -149,15 +155,15 @@ mod imp {
                                     log::warn!("Format not yet supported: {:X}", s.format);
                                     continue;
                                 }
-                                widget.set_display_size(Some((s.width as _, s.height as _)));
-                                widget.update_area(0, 0, s.width as _, s.height as _, s.stride as _, &s.data);
+                                this.obj().set_display_size(Some((s.width as _, s.height as _)));
+                                this.obj().update_area(0, 0, s.width as _, s.height as _, s.stride as _, &s.data);
                             }
                             Update(u) => {
                                 if u.format != 0x20020888 {
                                     log::warn!("Format not yet supported: {:X}", u.format);
                                     continue;
                                 }
-                                widget.update_area(u.x as _, u.y as _, u.w as _, u.h as _, u.stride as _, &u.data);
+                                this.obj().update_area(u.x as _, u.y as _, u.w as _, u.h as _, u.stride as _, &u.data);
                             }
                             #[cfg(windows)]
                             ScanoutDMABUF(_) => {
@@ -165,8 +171,8 @@ mod imp {
                             }
                             #[cfg(unix)]
                             ScanoutDMABUF(s) => {
-                                widget.set_display_size(Some((s.width as _, s.height as _)));
-                                widget.set_dmabuf_scanout(rdw::RdwDmabufScanout {
+                                this.obj().set_display_size(Some((s.width as _, s.height as _)));
+                                this.obj().set_dmabuf_scanout(rdw::RdwDmabufScanout {
                                     width: s.width,
                                     height: s.height,
                                     stride: s.stride,
@@ -177,7 +183,7 @@ mod imp {
                                 });
                             }
                             UpdateDMABUF { wait_tx, .. } => {
-                                widget.render();
+                                this.obj().render();
                                 let _ = wait_tx.send(());
                             }
                             Disconnected => {
@@ -192,23 +198,23 @@ mod imp {
                                     c.hot_y,
                                     1,
                                 );
-                                widget.define_cursor(Some(cursor));
+                                this.obj().define_cursor(Some(cursor));
                             }
                             MouseSet(m) => {
                                 if m.on != 0 {
-                                    widget.set_cursor_position(Some((m.x as _, m.y as _)));
+                                    this.obj().set_cursor_position(Some((m.x as _, m.y as _)));
                                 } else {
-                                    widget.set_cursor_position(None);
+                                    this.obj().set_cursor_position(None);
                                 }
                             }
                         }
                     }
                 }));
                 let mut abs_changed = console.mouse.receive_is_absolute_changed().await;
-                MainContext::default().spawn_local(clone!(@weak widget => async move {
+                MainContext::default().spawn_local(clone!(@weak this => async move {
                     while let Some(abs) = abs_changed.next().await {
                         if let Ok(abs) = abs.get().await {
-                            widget.set_mouse_absolute(abs);
+                            this.obj().set_mouse_absolute(abs);
                         }
                     }
                 }));
@@ -225,7 +231,7 @@ glib::wrapper! {
 
 impl Display {
     pub fn new(console: Console) -> Self {
-        let obj = glib::Object::new::<Self>(&[]).unwrap();
+        let obj = glib::Object::new(&[]);
         let self_ = imp::Display::from_instance(&obj);
         self_.console.set(console).unwrap();
         obj

@@ -13,4 +13,4 @@ futures = "0.3.13"
 
 [dependencies.vte]
 package = "vte4"
-version = "0.1"
+version = "0.5"
