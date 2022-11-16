@@ -174,10 +174,6 @@ mod imp {
                                 }
                                 this.obj().update_area(u.x as _, u.y as _, u.w as _, u.h as _, u.stride as _, &u.data);
                             }
-                            #[cfg(windows)]
-                            ScanoutDMABUF(_) => {
-                                unimplemented!()
-                            }
                             #[cfg(unix)]
                             ScanoutDMABUF(s) => {
                                 this.obj().set_display_size(Some((s.width as _, s.height as _)));
@@ -191,6 +187,7 @@ mod imp {
                                     fd: s.into_raw_fd(),
                                 });
                             }
+                            #[cfg(unix)]
                             UpdateDMABUF { wait_tx, .. } => {
                                 this.obj().render();
                                 let _ = wait_tx.send(());
@@ -257,7 +254,9 @@ impl Display {
 enum ConsoleEvent {
     Scanout(qemu_display::Scanout),
     Update(qemu_display::Update),
+    #[cfg(unix)]
     ScanoutDMABUF(qemu_display::ScanoutDMABUF),
+    #[cfg(unix)]
     UpdateDMABUF {
         _update: qemu_display::UpdateDMABUF,
         wait_tx: futures::channel::oneshot::Sender<()>,
@@ -289,10 +288,12 @@ impl ConsoleListenerHandler for ConsoleHandler {
         self.send(ConsoleEvent::Update(update));
     }
 
+    #[cfg(unix)]
     async fn scanout_dmabuf(&mut self, scanout: qemu_display::ScanoutDMABUF) {
         self.send(ConsoleEvent::ScanoutDMABUF(scanout));
     }
 
+    #[cfg(unix)]
     async fn update_dmabuf(&mut self, _update: qemu_display::UpdateDMABUF) {
         let (wait_tx, wait_rx) = futures::channel::oneshot::channel();
         self.send(ConsoleEvent::UpdateDMABUF { _update, wait_tx });

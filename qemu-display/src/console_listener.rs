@@ -98,8 +98,10 @@ pub trait ConsoleListenerHandler: 'static + Send + Sync {
 
     async fn update(&mut self, update: Update);
 
+    #[cfg(unix)]
     async fn scanout_dmabuf(&mut self, scanout: ScanoutDMABUF);
 
+    #[cfg(unix)]
     async fn update_dmabuf(&mut self, update: UpdateDMABUF);
 
     async fn mouse_set(&mut self, set: MouseSet);
