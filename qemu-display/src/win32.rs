@@ -1,5 +1,4 @@
 use std::io;
-use std::os::windows::io::AsRawSocket;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Networking::WinSock::{WSADuplicateSocketW, SOCKET, WSAPROTOCOL_INFOW};
 use windows::Win32::System::Threading::PROCESS_ACCESS_RIGHTS;
@@ -81,6 +80,7 @@ pub(crate) fn wsa_last_err() -> io::Error {
 // Get the process ID of the connected peer
 #[cfg(feature = "qmp")]
 pub(crate) fn unix_stream_get_peer_pid(stream: &UnixStream) -> Result<u32, std::io::Error> {
+    use std::os::windows::io::AsRawSocket;
     use windows::Win32::Networking::WinSock::{WSAIoctl, IOC_OUT, IOC_VENDOR, SOCKET_ERROR};
 
     macro_rules! _WSAIOR {
