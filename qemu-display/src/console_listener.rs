@@ -169,8 +169,10 @@ impl<H: ConsoleListenerHandler> ConsoleListener<H> {
         _fourcc: u32,
         _modifier: u64,
         _y0_top: bool,
-    ) {
-        unimplemented!()
+    ) -> zbus::fdo::Result<()> {
+        Err(zbus::fdo::Error::NotSupported(
+            "DMABUF is not support on !unix".into(),
+        ))
     }
 
     #[cfg(unix)]
@@ -184,7 +186,7 @@ impl<H: ConsoleListenerHandler> ConsoleListener<H> {
         fourcc: u32,
         modifier: u64,
         y0_top: bool,
-    ) {
+    ) -> zbus::fdo::Result<()> {
         let fd = unsafe { libc::dup(fd.as_raw_fd()) };
         self.handler
             .scanout_dmabuf(ScanoutDMABUF {
@@ -197,13 +199,24 @@ impl<H: ConsoleListenerHandler> ConsoleListener<H> {
                 y0_top,
             })
             .await;
+        Ok(())
     }
 
+    #[cfg(not(unix))]
     #[dbus_interface(name = "UpdateDMABUF")]
-    async fn update_dmabuf(&mut self, x: i32, y: i32, w: i32, h: i32) {
+    async fn update_dmabuf(&mut self, _x: i32, _y: i32, _w: i32, _h: i32) -> zbus::fdo::Result<()> {
+        Err(zbus::fdo::Error::NotSupported(
+            "DMABUF is not support on !unix".into(),
+        ))
+    }
+
+    #[cfg(unix)]
+    #[dbus_interface(name = "UpdateDMABUF")]
+    async fn update_dmabuf(&mut self, x: i32, y: i32, w: i32, h: i32) -> zbus::fdo::Result<()> {
         self.handler
             .update_dmabuf(UpdateDMABUF { x, y, w, h })
             .await;
+        Ok(())
     }
 
     async fn mouse_set(&mut self, x: i32, y: i32, on: i32) {
