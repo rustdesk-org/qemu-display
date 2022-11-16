@@ -32,6 +32,24 @@ pub struct Update {
     pub data: Vec<u8>,
 }
 
+#[derive(Debug)]
+pub struct ScanoutMap {
+    pub handle: u64,
+    pub offset: u32,
+    pub width: u32,
+    pub height: u32,
+    pub stride: u32,
+    pub format: u32,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct UpdateMap {
+    pub x: i32,
+    pub y: i32,
+    pub w: i32,
+    pub h: i32,
+}
+
 #[cfg(unix)]
 #[derive(Debug)]
 pub struct ScanoutDMABUF {
@@ -98,6 +116,12 @@ pub trait ConsoleListenerHandler: 'static + Send + Sync {
 
     async fn update(&mut self, update: Update);
 
+    #[cfg(windows)]
+    async fn scanout_map(&mut self, scanout: ScanoutMap);
+
+    #[cfg(windows)]
+    async fn update_map(&mut self, update: UpdateMap);
+
     #[cfg(unix)]
     async fn scanout_dmabuf(&mut self, scanout: ScanoutDMABUF);
 
@@ -158,6 +182,57 @@ impl<H: ConsoleListenerHandler> ConsoleListener<H> {
                 data: data.into_vec(),
             })
             .await;
+    }
+
+    #[cfg(windows)]
+    async fn scanout_map(
+        &mut self,
+        handle: u64,
+        offset: u32,
+        width: u32,
+        height: u32,
+        stride: u32,
+        format: u32,
+    ) -> zbus::fdo::Result<()> {
+        let map = ScanoutMap {
+            handle,
+            offset,
+            width,
+            height,
+            stride,
+            format,
+        };
+        self.handler.scanout_map(map).await;
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    async fn scanout_map(
+        &mut self,
+        _handle: u64,
+        _offset: u32,
+        _width: u32,
+        _height: u32,
+        _stride: u32,
+        _format: u32,
+    ) -> zbus::fdo::Result<()> {
+        Err(zbus::fdo::Error::NotSupported(
+            "Shared map is not support on !windows".into(),
+        ))
+    }
+
+    #[cfg(windows)]
+    async fn update_map(&mut self, x: i32, y: i32, w: i32, h: i32) -> zbus::fdo::Result<()> {
+        let up = UpdateMap { x, y, w, h };
+        self.handler.update_map(up).await;
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    async fn update_map(&mut self, _x: i32, _y: i32, _w: i32, _h: i32) -> zbus::fdo::Result<()> {
+        Err(zbus::fdo::Error::NotSupported(
+            "Shared map is not support on !windows".into(),
+        ))
     }
 
     #[cfg(not(unix))]

@@ -19,5 +19,8 @@ rdw = { package = "rdw4", version = "0.1", features = ["bindings"] }
 futures-util = "0.3"
 futures = "0.3"
 async-trait = "0.1"
-uds_windows = "1.0.2"
 tracing-subscriber = { version = "0.3.11", features = ["env-filter" , "fmt"], default-features = false }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+uds_windows = "1.0.2"
+windows = { version = "0.43.0", features = ["Win32_System_Memory", "Win32_Foundation"] }

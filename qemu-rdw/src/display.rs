@@ -11,6 +11,12 @@ use std::os::unix::io::IntoRawFd;
 mod imp {
     use super::*;
     use gtk::subclass::prelude::*;
+    #[cfg(windows)]
+    use std::cell::RefCell;
+    #[cfg(windows)]
+    use std::ffi::c_void;
+    #[cfg(windows)]
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
 
     #[repr(C)]
     pub struct RdwDisplayQemuClass {
@@ -38,10 +44,42 @@ mod imp {
         type Type = Display;
     }
 
+    #[cfg(windows)]
+    #[derive(Debug)]
+    struct MemoryMap {
+        handle: HANDLE,
+        ptr: *const c_void,
+        offset: isize,
+        size: usize,
+    }
+
+    #[cfg(windows)]
+    impl Drop for MemoryMap {
+        fn drop(&mut self) {
+            unsafe {
+                use windows::Win32::System::Memory::UnmapViewOfFile;
+
+                UnmapViewOfFile(self.ptr);
+                CloseHandle(self.handle);
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    impl MemoryMap {
+        fn as_bytes(&self) -> &[u8] {
+            unsafe {
+                std::slice::from_raw_parts(self.ptr.cast::<u8>().offset(self.offset), self.size)
+            }
+        }
+    }
+
     #[derive(Debug, Default)]
     pub struct Display {
         pub(crate) console: OnceCell<Console>,
         keymap: Cell<Option<&'static [u16]>>,
+        #[cfg(windows)]
+        scanout_map: RefCell<Option<(MemoryMap, u32)>>,
     }
 
     #[glib::object_subclass]
@@ -174,6 +212,42 @@ mod imp {
                                 }
                                 this.obj().update_area(u.x as _, u.y as _, u.w as _, u.h as _, u.stride as _, &u.data);
                             }
+                            #[cfg(windows)]
+                            ScanoutMap(s) => {
+                                use windows::Win32::System::Memory::{FILE_MAP_READ, MapViewOfFile};
+
+                                log::debug!("{s:?}");
+                                if s.format != 0x20020888 {
+                                    log::warn!("Format not yet supported: {:X}", s.format);
+                                    continue;
+                                }
+
+                                let handle = HANDLE(s.handle as _);
+                                let size = s.height as usize * s.stride as usize;
+                                let offset = s.offset as isize;
+                                let ptr = unsafe { MapViewOfFile(handle, FILE_MAP_READ, 0, 0, s.offset as usize + size) };
+                                if ptr.is_null() {
+                                    log::warn!("Failed to map scanout!");
+                                    continue;
+                                }
+
+                                let map = MemoryMap { ptr, handle, offset, size };
+                                this.obj().set_display_size(Some((s.width as _, s.height as _)));
+                                this.obj().update_area(0, 0, s.width as _, s.height as _, s.stride as _, map.as_bytes());
+                                this.scanout_map.replace(Some((map, s.stride)));
+                            }
+                            #[cfg(windows)]
+                            UpdateMap(u) => {
+                                log::debug!("{u:?}");
+                                let scanout_map = this.scanout_map.borrow();
+                                let Some((map, stride)) = scanout_map.as_ref() else {
+                                    log::warn!("No mapped scanout!");
+                                    continue;
+                                };
+                                let stride = *stride;
+                                let bytes = map.as_bytes();
+                                this.obj().update_area(u.x as _, u.y as _, u.w as _, u.h as _, stride as _, &bytes[u.y as usize * stride as usize + u.x as usize * 4..]);
+                            }
                             #[cfg(unix)]
                             ScanoutDMABUF(s) => {
                                 this.obj().set_display_size(Some((s.width as _, s.height as _)));
@@ -196,6 +270,7 @@ mod imp {
                                 log::warn!("Console disconnected");
                             }
                             CursorDefine(c) => {
+                                log::debug!("{c:?}");
                                 let cursor = rdw::Display::make_cursor(
                                     &c.data,
                                     c.width,
@@ -254,6 +329,10 @@ impl Display {
 enum ConsoleEvent {
     Scanout(qemu_display::Scanout),
     Update(qemu_display::Update),
+    #[cfg(windows)]
+    ScanoutMap(qemu_display::ScanoutMap),
+    #[cfg(windows)]
+    UpdateMap(qemu_display::UpdateMap),
     #[cfg(unix)]
     ScanoutDMABUF(qemu_display::ScanoutDMABUF),
     #[cfg(unix)]
@@ -286,6 +365,16 @@ impl ConsoleListenerHandler for ConsoleHandler {
 
     async fn update(&mut self, update: qemu_display::Update) {
         self.send(ConsoleEvent::Update(update));
+    }
+
+    #[cfg(windows)]
+    async fn scanout_map(&mut self, scanout: qemu_display::ScanoutMap) {
+        self.send(ConsoleEvent::ScanoutMap(scanout));
+    }
+
+    #[cfg(windows)]
+    async fn update_map(&mut self, update: qemu_display::UpdateMap) {
+        self.send(ConsoleEvent::UpdateMap(update));
     }
 
     #[cfg(unix)]
