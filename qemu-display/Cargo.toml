@@ -31,8 +31,8 @@ qapi = { version = "0.9.0", features = ["qmp"], optional = true }
 base64 = { version = "0.13", optional = true }
 
 [target.'cfg(windows)'.dependencies]
-uds_windows = "1.0.1"
-windows = { version = "0.39.0", features = ["Win32_Networking_WinSock", "Win32_Foundation", "Win32_System_IO", "Win32_System_Threading"] }
+uds_windows = "1.0.2"
+windows = { version = "0.43.0", features = ["Win32_Networking_WinSock", "Win32_Foundation", "Win32_System_IO", "Win32_System_Threading"] }
 
 [target.'cfg(windows)'.dev-dependencies]
 async-std = { version = "1.12.0", features = ["attributes"] }

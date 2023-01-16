@@ -98,12 +98,12 @@ pub(crate) fn unix_stream_get_peer_pid(stream: &UnixStream) -> Result<u32, std::
         WSAIoctl(
             SOCKET(socket as _),
             SIO_AF_UNIX_GETPEERPID,
-            0 as *mut _,
+            None,
             0,
-            &mut ret as *mut _ as *mut _,
+            Some(&mut ret as *mut _ as *mut _),
             std::mem::size_of_val(&ret) as u32,
             &mut bytes,
-            0 as *mut _,
+            None,
             None,
         )
     };
