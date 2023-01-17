@@ -99,41 +99,43 @@ impl ClipboardHandler for InnerHandler {
         selection: ClipboardSelection,
         mimes: Vec<String>,
     ) -> qemu_display::Result<(String, Vec<u8>)> {
-        // we have to spawn a local future, because clipboard is not Send
         let (sender, receiver) = futures::channel::oneshot::channel();
-        glib::MainContext::default().spawn_local(async move {
-            let res = if let Some((clipboard, _)) = clipboard_from_selection(selection) {
-                let m: Vec<_> = mimes.iter().map(|s| s.as_str()).collect();
-                let res = clipboard.read_future(&m, glib::Priority::default()).await;
-                log::debug!("clipboard-read: {}", res.is_ok());
-                match res {
-                    Ok((stream, mime)) => {
-                        let out = gio::MemoryOutputStream::new_resizable();
-                        let res = out
-                            .splice_future(
-                                &stream,
-                                gio::OutputStreamSpliceFlags::CLOSE_SOURCE
-                                    | gio::OutputStreamSpliceFlags::CLOSE_TARGET,
-                                glib::Priority::default(),
-                            )
-                            .await;
-                        match res {
-                            Ok(_) => {
-                                let data = out.steal_as_bytes();
-                                Ok((mime.to_string(), data.as_ref().to_vec()))
+        glib::MainContext::default().invoke(move || {
+            glib::MainContext::default().spawn_local(async move {
+                let res = if let Some((clipboard, _)) = clipboard_from_selection(selection) {
+                    let m: Vec<_> = mimes.iter().map(|s| s.as_str()).collect();
+                    let res = clipboard.read_future(&m, glib::Priority::default()).await;
+                    log::debug!("clipboard-read: {}", res.is_ok());
+                    match res {
+                        Ok((stream, mime)) => {
+                            let out = gio::MemoryOutputStream::new_resizable();
+                            let res = out
+                                .splice_future(
+                                    &stream,
+                                    gio::OutputStreamSpliceFlags::CLOSE_SOURCE
+                                        | gio::OutputStreamSpliceFlags::CLOSE_TARGET,
+                                    glib::Priority::default(),
+                                )
+                                .await;
+                            match res {
+                                Ok(_) => {
+                                    let data = out.steal_as_bytes();
+                                    Ok((mime.to_string(), data.as_ref().to_vec()))
+                                }
+                                Err(e) => Err(qemu_display::Error::Failed(format!("{}", e))),
                             }
-                            Err(e) => Err(qemu_display::Error::Failed(format!("{}", e))),
                         }
+                        Err(e) => Err(qemu_display::Error::Failed(format!("{}", e))),
                     }
-                    Err(e) => Err(qemu_display::Error::Failed(format!("{}", e))),
-                }
-            } else {
-                Err(qemu_display::Error::Failed(
-                    "Clipboard request failed".into(),
-                ))
-            };
-            sender.send(res).unwrap()
+                } else {
+                    Err(qemu_display::Error::Failed(
+                        "Clipboard request failed".into(),
+                    ))
+                };
+                sender.send(res).unwrap()
+            });
         });
+
         match receiver.await {
             Ok(res) => res,
             Err(e) => Err(qemu_display::Error::Failed(format!(
