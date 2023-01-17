@@ -93,7 +93,7 @@ mod imp {
                 .connect_motion_relative(clone!(@weak self as this => move |_, dx, dy| {
                     log::debug!("motion-relative: {:?}", (dx, dy));
                     MainContext::default().spawn_local(clone!(@weak this => async move {
-                        let _ = this.obj().console().mouse.rel_motion(dx as _, dy as _).await;
+                        let _ = this.obj().console().mouse.rel_motion(dx.round() as _, dy.round() as _).await;
                     }));
                 }));
 
